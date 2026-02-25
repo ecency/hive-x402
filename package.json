@@ -21,7 +21,10 @@
     }
   },
   "files": [
-    "dist",
+    "dist/types.*",
+    "dist/facilitator",
+    "dist/client",
+    "dist/middleware",
     "README.md",
     "LICENSE"
   ],
