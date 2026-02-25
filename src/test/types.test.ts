@@ -117,9 +117,12 @@ describe("encode/decode PaymentRequired", () => {
 });
 
 describe("constants", () => {
-  it("HIVE_CHAIN_ID is 32 zero bytes", () => {
+  it("HIVE_CHAIN_ID is 32 bytes starting with beeab0de", () => {
     assert.equal(HIVE_CHAIN_ID.length, 32);
-    assert.ok(HIVE_CHAIN_ID.every((b) => b === 0));
+    assert.equal(
+      HIVE_CHAIN_ID.toString("hex"),
+      "beeab0de00000000000000000000000000000000000000000000000000000000"
+    );
   });
 
   it("HIVE_NETWORK is hive:mainnet", () => {

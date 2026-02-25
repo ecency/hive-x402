@@ -5,7 +5,10 @@ import type { SignedTransaction, Transaction } from "@hiveio/dhive";
 export const X402_VERSION = 1;
 export const HIVE_NETWORK = "hive:mainnet";
 export const HBD_ASSET = "HBD";
-export const HIVE_CHAIN_ID = Buffer.alloc(32, 0);
+export const HIVE_CHAIN_ID = Buffer.from(
+  "beeab0de00000000000000000000000000000000000000000000000000000000",
+  "hex"
+);
 
 export const HEADER_PAYMENT = "x-payment";
 export const HEADER_PAYMENT_RESPONSE = "x-payment-response";
