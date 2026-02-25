@@ -2,32 +2,23 @@ upstream facilitator {
     server facilitator:4020;
 }
 
-# Redirect HTTP → HTTPS (except ACME challenge)
 server {
     listen 80;
     server_name ${DOMAIN};
-
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-    }
-
-    location / {
-        return 301 https://$host$request_uri;
-    }
+    return 301 https://$host$request_uri;
 }
 
-# HTTPS
 server {
     listen 443 ssl;
     server_name ${DOMAIN};
 
-    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    # Cloudflare Origin Certificate
+    ssl_certificate     /etc/ssl/certs/origin/cert.pem;
+    ssl_certificate_key /etc/ssl/certs/origin/key.pem;
 
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers on;
 
-    # Security headers
     add_header X-Content-Type-Options nosniff;
     add_header X-Frame-Options DENY;
 

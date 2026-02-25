@@ -30,25 +30,12 @@ services:
       - "443:443"
     volumes:
       - ./nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
-      - certs:/etc/letsencrypt
-      - certbot-www:/var/www/certbot
+      - ./certs:/etc/ssl/certs/origin:ro
     environment:
       - DOMAIN=${DOMAIN:-x402.ecency.com}
     depends_on:
       - facilitator
     restart: unless-stopped
 
-  # Get SSL certs:  DOMAIN=x402.ecency.com CERTBOT_EMAIL=you@email.com docker compose run --rm certbot
-  certbot:
-    image: certbot/certbot
-    volumes:
-      - certs:/etc/letsencrypt
-      - certbot-www:/var/www/certbot
-    command: certonly --webroot -w /var/www/certbot --email ${CERTBOT_EMAIL} -d ${DOMAIN} --agree-tos --non-interactive
-    profiles:
-      - setup
-
 volumes:
   redis-data:
-  certs:
-  certbot-www:
