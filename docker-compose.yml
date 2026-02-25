@@ -1,0 +1,54 @@
+services:
+  facilitator:
+    build: .
+    environment:
+      - PORT=4020
+      - REDIS_URL=redis://redis:6379
+      - NONCE_TTL=86400
+      - RATE_LIMIT_MAX=120
+      - RATE_LIMIT_WINDOW_MS=60000
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - certs:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    environment:
+      - DOMAIN=${DOMAIN:-x402.ecency.com}
+    depends_on:
+      - facilitator
+    restart: unless-stopped
+
+  # Get SSL certs:  DOMAIN=x402.ecency.com CERTBOT_EMAIL=you@email.com docker compose run --rm certbot
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - certs:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    command: certonly --webroot -w /var/www/certbot --email ${CERTBOT_EMAIL} -d ${DOMAIN} --agree-tos --non-interactive
+    profiles:
+      - setup
+
+volumes:
+  redis-data:
+  certs:
+  certbot-www:
