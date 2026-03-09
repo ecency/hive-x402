@@ -1,8 +1,7 @@
 import type { Transaction } from "@hiveio/dhive";
 import {
   HIVE_API_NODES,
-  formatHBD,
-  parseHBD,
+  hexToBytes,
   type PaymentRequirements,
 } from "../types.js";
 
@@ -77,22 +76,18 @@ export async function buildPaymentTransaction(
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < hex.length; i += 2) {
-    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
-  }
-  return bytes;
-}
-
 interface DynamicGlobalProperties {
   head_block_number: number;
   head_block_id: string;
 }
 
+const NODE_TIMEOUT_MS = 8000;
+
 async function fetchDynamicGlobalProperties(): Promise<DynamicGlobalProperties> {
   let lastError: Error | undefined;
   for (const node of HIVE_API_NODES) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), NODE_TIMEOUT_MS);
     try {
       const res = await fetch(node, {
         method: "POST",
@@ -103,10 +98,13 @@ async function fetchDynamicGlobalProperties(): Promise<DynamicGlobalProperties> 
           params: [],
           id: 1,
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timer);
       const json = await res.json() as any;
       if (json.result) return json.result;
     } catch (err) {
+      clearTimeout(timer);
       lastError = err instanceof Error ? err : new Error(String(err));
     }
   }

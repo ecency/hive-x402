@@ -6,11 +6,14 @@ import {
   HIVE_NETWORK,
   decodePayment,
   encodePaymentRequired,
+  utf8ToBase64,
   type PaymentRequirements,
   type PaymentRequired,
   type VerifyResponse,
   type SettleResponse,
 } from "../types.js";
+
+const FACILITATOR_TIMEOUT_MS = 15_000;
 
 export interface HonoPaywallOptions {
   /** Amount in HBD string, e.g. "1.000 HBD" */
@@ -41,6 +44,9 @@ export function honoPaywall(options: HonoPaywallOptions) {
   return async (c: Context, next: Next) => {
     const paymentHeader = c.req.header(HEADER_PAYMENT);
 
+    // Compute validBefore once so the 402 response and verify/settle use the same window
+    const validBefore = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+
     if (!paymentHeader) {
       const requirements: PaymentRequirements = {
         x402Version: X402_VERSION,
@@ -49,7 +55,7 @@ export function honoPaywall(options: HonoPaywallOptions) {
         maxAmountRequired: amount,
         resource: c.req.path,
         payTo: receivingAccount,
-        validBefore: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        validBefore,
         description,
         mimeType,
       };
@@ -78,16 +84,33 @@ export function honoPaywall(options: HonoPaywallOptions) {
         maxAmountRequired: amount,
         resource: c.req.path,
         payTo: receivingAccount,
-        validBefore: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        validBefore,
       };
 
       // Step 1: Verify
-      const verifyRes = await fetch(`${facilitatorUrl}/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentPayload, paymentRequirements }),
-      });
-      const verifyResult: VerifyResponse = await verifyRes.json() as VerifyResponse;
+      const verifyController = new AbortController();
+      const verifyTimer = setTimeout(() => verifyController.abort(), FACILITATOR_TIMEOUT_MS);
+      let verifyResult: VerifyResponse;
+      try {
+        const verifyRes = await fetch(`${facilitatorUrl}/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paymentPayload, paymentRequirements }),
+          signal: verifyController.signal,
+        });
+        clearTimeout(verifyTimer);
+        if (!verifyRes.ok) {
+          const body = await verifyRes.text().catch(() => "");
+          return c.json(
+            { error: "Facilitator verify error", status: verifyRes.status, body },
+            502
+          );
+        }
+        verifyResult = await verifyRes.json() as VerifyResponse;
+      } catch (err) {
+        clearTimeout(verifyTimer);
+        throw err;
+      }
 
       if (!verifyResult.isValid) {
         return c.json(
@@ -97,12 +120,29 @@ export function honoPaywall(options: HonoPaywallOptions) {
       }
 
       // Step 2: Settle
-      const settleRes = await fetch(`${facilitatorUrl}/settle`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentPayload, paymentRequirements }),
-      });
-      const settleResult: SettleResponse = await settleRes.json() as SettleResponse;
+      const settleController = new AbortController();
+      const settleTimer = setTimeout(() => settleController.abort(), FACILITATOR_TIMEOUT_MS);
+      let settleResult: SettleResponse;
+      try {
+        const settleRes = await fetch(`${facilitatorUrl}/settle`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paymentPayload, paymentRequirements }),
+          signal: settleController.signal,
+        });
+        clearTimeout(settleTimer);
+        if (!settleRes.ok) {
+          const body = await settleRes.text().catch(() => "");
+          return c.json(
+            { error: "Facilitator settle error", status: settleRes.status, body },
+            502
+          );
+        }
+        settleResult = await settleRes.json() as SettleResponse;
+      } catch (err) {
+        clearTimeout(settleTimer);
+        throw err;
+      }
 
       if (!settleResult.success) {
         return c.json(
@@ -112,11 +152,17 @@ export function honoPaywall(options: HonoPaywallOptions) {
       }
 
       // Store payer info for downstream handlers
-      c.set("payer", settleResult.payer!);
-      c.set("txId", settleResult.txId!);
+      if (!settleResult.payer || !settleResult.txId) {
+        return c.json(
+          { error: "Facilitator returned success but missing payer or txId" },
+          502
+        );
+      }
+      c.set("payer", settleResult.payer);
+      c.set("txId", settleResult.txId);
 
       // Add settlement header to response
-      c.header(HEADER_PAYMENT_RESPONSE, btoa(JSON.stringify(settleResult)));
+      c.header(HEADER_PAYMENT_RESPONSE, utf8ToBase64(JSON.stringify(settleResult)));
 
       await next();
     } catch (err) {

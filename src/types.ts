@@ -6,7 +6,7 @@ export const X402_VERSION = 1;
 export const HIVE_NETWORK = "hive:mainnet";
 export const HBD_ASSET = "HBD";
 
-function hexToBytes(hex: string): Uint8Array {
+export function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < hex.length; i += 2) {
     bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
@@ -99,22 +99,44 @@ export interface NonceStore {
   markSpent(nonce: string): void | Promise<void>;
 }
 
+// ─── UTF-8–safe Base64 ──────────────────────────────────────────────────────
+
+/** Encode a UTF-8 string to base64 (safe for non-Latin-1 characters). */
+export function utf8ToBase64(str: string): string {
+  const bytes = new TextEncoder().encode(str);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
+
+/** Decode a base64 string to UTF-8 (safe for non-Latin-1 characters). */
+export function base64ToUtf8(b64: string): string {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 // ─── Encode / Decode Utilities ──────────────────────────────────────────────
 
 export function encodePayment(payload: PaymentPayload): string {
-  return btoa(JSON.stringify(payload));
+  return utf8ToBase64(JSON.stringify(payload));
 }
 
 export function decodePayment(header: string): PaymentPayload {
-  return JSON.parse(atob(header));
+  return JSON.parse(base64ToUtf8(header));
 }
 
 export function encodePaymentRequired(pr: PaymentRequired): string {
-  return btoa(JSON.stringify(pr));
+  return utf8ToBase64(JSON.stringify(pr));
 }
 
 export function decodePaymentRequired(header: string): PaymentRequired {
-  return JSON.parse(atob(header));
+  return JSON.parse(base64ToUtf8(header));
 }
 
 /** Format a number as HBD asset string, e.g. "0.050 HBD" */

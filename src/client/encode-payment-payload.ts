@@ -2,6 +2,7 @@ import type { SignedTransaction } from "@hiveio/dhive";
 import {
   X402_VERSION,
   HIVE_NETWORK,
+  utf8ToBase64,
   type PaymentPayload,
 } from "../types.js";
 
@@ -28,5 +29,5 @@ export function encodePaymentPayload(opts: EncodePaymentPayloadOptions): string 
     },
   };
 
-  return btoa(JSON.stringify(payload));
+  return utf8ToBase64(JSON.stringify(payload));
 }
