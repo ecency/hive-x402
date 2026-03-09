@@ -1,8 +1,17 @@
-import type { Client } from "@hiveio/dhive";
+import type { Client, SignedTransaction } from "@hiveio/dhive";
 import type { Request, Response } from "express";
 import { verifySignature } from "../hive/verify-signature.js";
 import { broadcastTransaction } from "../hive/broadcast.js";
 import type { NonceStore, SettleRequest, SettleResponse } from "../../types.js";
+
+/** Extract the nonce from the transaction memo (`x402:{nonce}`), or null if missing/malformed. */
+function extractMemoNonce(tx: SignedTransaction): string | null {
+  const op = tx.operations?.[0];
+  if (!op || op[0] !== "transfer") return null;
+  const memo: string = (op[1] as { memo?: string }).memo ?? "";
+  if (!memo.startsWith("x402:")) return null;
+  return memo.slice(5);
+}
 
 export function createSettleRoute(nonceStore: NonceStore, hiveClient?: Client) {
   return async (req: Request, res: Response) => {
@@ -15,6 +24,16 @@ export function createSettleRoute(nonceStore: NonceStore, hiveClient?: Client) {
       }
 
       const { signedTransaction, nonce } = paymentPayload.payload;
+
+      // Cross-validate: payload nonce must match the memo nonce in the transaction
+      const memoNonce = extractMemoNonce(signedTransaction);
+      if (memoNonce === null || memoNonce !== nonce) {
+        res.json({
+          success: false,
+          errorReason: "Payload nonce does not match transaction memo nonce",
+        } satisfies SettleResponse);
+        return;
+      }
 
       // Check nonce hasn't been spent
       if (await nonceStore.isSpent(nonce)) {

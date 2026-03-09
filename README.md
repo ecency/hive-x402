@@ -77,7 +77,26 @@ export const GET = withPaywall({
 }, handler);
 ```
 
-### 4. Pay for content (AI agent / client)
+### 4. Add paywall to your API (Hono)
+
+```ts
+import { Hono } from "hono";
+import { honoPaywall } from "@hiveio/x402/middleware/hono";
+
+const app = new Hono();
+
+app.get("/api/premium", honoPaywall({
+  amount: "0.050 HBD",
+  receivingAccount: "your-hive-account",
+  facilitatorUrl: "http://localhost:4020",
+}), (c) => {
+  return c.json({ data: "premium content", payer: c.get("payer") });
+});
+
+export default app;
+```
+
+### 5. Pay for content (AI agent / client)
 
 ```ts
 import { HiveX402Client } from "@hiveio/x402/client";
@@ -101,6 +120,7 @@ const data = await res.json();
 | `@hiveio/x402/client` | `HiveX402Client` fetch wrapper for paying agents |
 | `@hiveio/x402/middleware` | Express `paywall()` middleware |
 | `@hiveio/x402/middleware/nextjs` | Next.js `withPaywall()` route wrapper |
+| `@hiveio/x402/middleware/hono` | Hono `honoPaywall()` middleware |
 
 ## Facilitator
 
@@ -175,6 +195,26 @@ const header = await signPayment({
   activeKey: "5K...",
   requirements,
 });
+```
+
+### Browser-compatible building blocks
+
+For browser-based signing (e.g. Hive Keychain, HiveAuth), use `buildPaymentTransaction` + `encodePaymentPayload` instead of `signPayment`:
+
+```ts
+import { buildPaymentTransaction, encodePaymentPayload } from "@hiveio/x402/client";
+
+// 1. Build unsigned transaction (uses Web Crypto, no Node.js deps)
+const { transaction, nonce } = await buildPaymentTransaction({
+  account: "alice",
+  requirements,
+});
+
+// 2. Sign with your preferred method (Keychain, HiveAuth, etc.)
+const signedTx = await yourSigner(transaction);
+
+// 3. Encode into x-payment header
+const header = encodePaymentPayload({ signedTransaction: signedTx, nonce });
 ```
 
 ## Types

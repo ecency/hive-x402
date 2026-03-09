@@ -48,10 +48,19 @@ export async function buildPaymentTransaction(
   const view = new DataView(blockIdBytes.buffer, blockIdBytes.byteOffset, blockIdBytes.byteLength);
   const refBlockPrefix = view.getUint32(4, true); // little-endian
 
-  // Expiration: 60 seconds from now
-  const expiration = new Date(Date.now() + 60 * 1000)
-    .toISOString()
-    .slice(0, -5);
+  // Expiration: min(60s from now, validBefore) — fail fast if already expired
+  const now = Date.now();
+  let expiryMs = now + 60 * 1000;
+  if (requirements.validBefore) {
+    const validBeforeMs = new Date(requirements.validBefore).getTime();
+    if (validBeforeMs <= now) {
+      throw new Error("Payment requirements have expired (validBefore is in the past)");
+    }
+    if (validBeforeMs < expiryMs) {
+      expiryMs = validBeforeMs;
+    }
+  }
+  const expiration = new Date(expiryMs).toISOString().slice(0, -5);
 
   const transaction: Transaction = {
     ref_block_num: refBlockNum,
