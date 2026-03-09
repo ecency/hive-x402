@@ -1,4 +1,4 @@
-import type { Transaction } from "@hiveio/dhive";
+import type { Transaction, TransferOperation } from "@hiveio/dhive";
 import {
   HIVE_API_NODES,
   hexToBytes,
@@ -66,7 +66,7 @@ export async function buildPaymentTransaction(
           amount: requirements.maxAmountRequired,
           memo: `x402:${nonce}`,
         },
-      ] as any,
+      ] as TransferOperation,
     ],
     extensions: [],
   };

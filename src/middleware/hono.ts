@@ -109,6 +109,9 @@ export function honoPaywall(options: HonoPaywallOptions) {
         verifyResult = await verifyRes.json() as VerifyResponse;
       } catch (err) {
         clearTimeout(verifyTimer);
+        if (err instanceof Error && err.name === "AbortError") {
+          throw new Error(`Facilitator verify timed out after ${FACILITATOR_TIMEOUT_MS}ms`);
+        }
         throw err;
       }
 
@@ -141,6 +144,9 @@ export function honoPaywall(options: HonoPaywallOptions) {
         settleResult = await settleRes.json() as SettleResponse;
       } catch (err) {
         clearTimeout(settleTimer);
+        if (err instanceof Error && err.name === "AbortError") {
+          throw new Error(`Facilitator settle timed out after ${FACILITATOR_TIMEOUT_MS}ms`);
+        }
         throw err;
       }
 
