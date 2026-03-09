@@ -89,7 +89,7 @@ describe("encode/decode PaymentPayload", () => {
 
   it("produces a base64 string", () => {
     const encoded = encodePayment(payload);
-    assert.doesNotThrow(() => Buffer.from(encoded, "base64"));
+    assert.doesNotThrow(() => atob(encoded));
   });
 });
 
@@ -119,8 +119,11 @@ describe("encode/decode PaymentRequired", () => {
 describe("constants", () => {
   it("HIVE_CHAIN_ID is 32 bytes starting with beeab0de", () => {
     assert.equal(HIVE_CHAIN_ID.length, 32);
+    const hex = Array.from(HIVE_CHAIN_ID)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
     assert.equal(
-      HIVE_CHAIN_ID.toString("hex"),
+      hex,
       "beeab0de00000000000000000000000000000000000000000000000000000000"
     );
   });

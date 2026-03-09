@@ -1,6 +1,7 @@
 import type { Client } from "@hiveio/dhive";
 import type { Request, Response } from "express";
 import { verifySignature } from "../hive/verify-signature.js";
+import { extractMemoNonce } from "../hive/memo.js";
 import type { NonceStore, VerifyRequest, VerifyResponse } from "../../types.js";
 
 export function createVerifyRoute(nonceStore: NonceStore, hiveClient?: Client) {
@@ -14,6 +15,16 @@ export function createVerifyRoute(nonceStore: NonceStore, hiveClient?: Client) {
       }
 
       const { signedTransaction, nonce } = paymentPayload.payload;
+
+      // Cross-validate: payload nonce must match the memo nonce in the transaction
+      const memoNonce = extractMemoNonce(signedTransaction);
+      if (memoNonce === null || memoNonce !== nonce) {
+        res.json({
+          isValid: false,
+          invalidReason: "Payload nonce does not match transaction memo nonce",
+        } satisfies VerifyResponse);
+        return;
+      }
 
       // Check nonce hasn't been spent
       if (await nonceStore.isSpent(nonce)) {

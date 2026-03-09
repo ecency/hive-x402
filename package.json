@@ -1,6 +1,6 @@
 {
   "name": "@hiveio/x402",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Hive/HBD-native implementation of the x402 payment standard — zero-fee micropayments for AI agents and APIs",
   "type": "module",
   "exports": {
@@ -9,7 +9,8 @@
     "./facilitator": "./dist/facilitator/index.js",
     "./client": "./dist/client/index.js",
     "./middleware": "./dist/middleware/index.js",
-    "./middleware/nextjs": "./dist/middleware/nextjs.js"
+    "./middleware/nextjs": "./dist/middleware/nextjs.js",
+    "./middleware/hono": "./dist/middleware/hono.js"
   },
   "typesVersions": {
     "*": {
@@ -17,7 +18,8 @@
       "facilitator": ["dist/facilitator/index.d.ts"],
       "client": ["dist/client/index.d.ts"],
       "middleware": ["dist/middleware/index.d.ts"],
-      "middleware/nextjs": ["dist/middleware/nextjs.d.ts"]
+      "middleware/nextjs": ["dist/middleware/nextjs.d.ts"],
+      "middleware/hono": ["dist/middleware/hono.d.ts"]
     }
   },
   "files": [
@@ -67,14 +69,19 @@
     "@types/better-sqlite3": "^7.6.12",
     "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
+    "hono": "^4.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.7.0"
   },
   "peerDependencies": {
-    "express": "^4.21.0 || ^5.0.0"
+    "express": "^4.21.0 || ^5.0.0",
+    "hono": "^4.0.0"
   },
   "peerDependenciesMeta": {
     "express": {
+      "optional": true
+    },
+    "hono": {
       "optional": true
     }
   },

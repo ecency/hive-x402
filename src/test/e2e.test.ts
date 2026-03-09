@@ -103,7 +103,7 @@ function buildSignedPayment(opts: {
     extensions: [],
   };
 
-  const signedTx = cryptoUtils.signTransaction(tx, TEST_PRIVKEY, HIVE_CHAIN_ID);
+  const signedTx = cryptoUtils.signTransaction(tx, TEST_PRIVKEY, Buffer.from(HIVE_CHAIN_ID));
 
   const payload: PaymentPayload = {
     x402Version: X402_VERSION,
