@@ -74,7 +74,7 @@ export async function verifySignature(
     return { isValid: false, invalidReason: "No signatures present" };
   }
 
-  const digest = cryptoUtils.transactionDigest(signedTx, HIVE_CHAIN_ID);
+  const digest = cryptoUtils.transactionDigest(signedTx, Buffer.from(HIVE_CHAIN_ID));
   const sig = Signature.fromString(signedTx.signatures[0]);
   const recoveredKey = sig.recover(digest);
 

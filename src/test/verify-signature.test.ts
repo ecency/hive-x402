@@ -54,7 +54,7 @@ function buildSignedTx(opts: {
     ],
     extensions: [],
   };
-  return cryptoUtils.signTransaction(tx, TEST_PRIVKEY, HIVE_CHAIN_ID);
+  return cryptoUtils.signTransaction(tx, TEST_PRIVKEY, Buffer.from(HIVE_CHAIN_ID));
 }
 
 function reqs(overrides: Partial<PaymentRequirements> = {}): PaymentRequirements {

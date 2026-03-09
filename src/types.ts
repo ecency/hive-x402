@@ -5,9 +5,17 @@ import type { SignedTransaction, Transaction } from "@hiveio/dhive";
 export const X402_VERSION = 1;
 export const HIVE_NETWORK = "hive:mainnet";
 export const HBD_ASSET = "HBD";
-export const HIVE_CHAIN_ID = Buffer.from(
-  "beeab0de00000000000000000000000000000000000000000000000000000000",
-  "hex"
+
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+  }
+  return bytes;
+}
+
+export const HIVE_CHAIN_ID = hexToBytes(
+  "beeab0de00000000000000000000000000000000000000000000000000000000"
 );
 
 export const HEADER_PAYMENT = "x-payment";
@@ -94,19 +102,19 @@ export interface NonceStore {
 // ─── Encode / Decode Utilities ──────────────────────────────────────────────
 
 export function encodePayment(payload: PaymentPayload): string {
-  return Buffer.from(JSON.stringify(payload)).toString("base64");
+  return btoa(JSON.stringify(payload));
 }
 
 export function decodePayment(header: string): PaymentPayload {
-  return JSON.parse(Buffer.from(header, "base64").toString("utf-8"));
+  return JSON.parse(atob(header));
 }
 
 export function encodePaymentRequired(pr: PaymentRequired): string {
-  return Buffer.from(JSON.stringify(pr)).toString("base64");
+  return btoa(JSON.stringify(pr));
 }
 
 export function decodePaymentRequired(header: string): PaymentRequired {
-  return JSON.parse(Buffer.from(header, "base64").toString("utf-8"));
+  return JSON.parse(atob(header));
 }
 
 /** Format a number as HBD asset string, e.g. "0.050 HBD" */
