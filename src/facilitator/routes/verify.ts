@@ -1,16 +1,8 @@
-import type { Client, SignedTransaction } from "@hiveio/dhive";
+import type { Client } from "@hiveio/dhive";
 import type { Request, Response } from "express";
 import { verifySignature } from "../hive/verify-signature.js";
+import { extractMemoNonce } from "../hive/memo.js";
 import type { NonceStore, VerifyRequest, VerifyResponse } from "../../types.js";
-
-/** Extract the nonce from the transaction memo (`x402:{nonce}`), or null if missing/malformed. */
-function extractMemoNonce(tx: SignedTransaction): string | null {
-  const op = tx.operations?.[0];
-  if (!op || op[0] !== "transfer") return null;
-  const memo: string = (op[1] as { memo?: string }).memo ?? "";
-  if (!memo.startsWith("x402:")) return null;
-  return memo.slice(5);
-}
 
 export function createVerifyRoute(nonceStore: NonceStore, hiveClient?: Client) {
   return async (req: Request, res: Response) => {
