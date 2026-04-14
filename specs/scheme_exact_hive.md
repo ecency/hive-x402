@@ -9,7 +9,7 @@
 
 - `hive:mainnet` — Hive mainnet
 
-> **Note:** Hive does not yet have an official [CAIP-2](https://github.com/ChainAgnostic/CAIPs/blob/main/CAIPs/caip-2.md) namespace. The identifier `hive:mainnet` follows the `{namespace}:{reference}` convention and will be updated if a formal CAIP-2 registration is submitted.
+> Hive has an official [CAIP-2](https://github.com/ChainAgnostic/CAIPs/blob/main/CAIPs/caip-2.md) namespace registered at [ChainAgnostic/namespaces](https://github.com/ChainAgnostic/namespaces/tree/main/hive).
 
 ## Summary
 
