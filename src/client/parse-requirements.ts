@@ -23,7 +23,11 @@ export function parseRequirements(response: Response): ParsedRequirements {
   if (!header) return { requirements: null, x402Version: 1 };
 
   const paymentRequired: PaymentRequired = decodePaymentRequired(header);
-  const version = (paymentRequired.x402Version === 2 ? 2 : 1) as 1 | 2;
+  const rawVersion = paymentRequired.x402Version;
+  if (rawVersion !== 1 && rawVersion !== 2) {
+    throw new Error(`Unsupported x402Version: ${rawVersion}`);
+  }
+  const version = rawVersion as 1 | 2;
 
   const match = paymentRequired.accepts.find((r) => r.network === HIVE_NETWORK) ?? null;
 

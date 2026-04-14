@@ -3,7 +3,7 @@
 ## Versions Supported
 
 - ✅ `v1`
-- ❌ `v2` — planned for future alignment
+- ✅ `v2`
 
 ## Supported Networks
 
@@ -49,6 +49,8 @@ The Client constructs and signs a standard Hive `transfer` operation using their
 
 ## `PaymentRequirements` for `exact`
 
+**v1 example:**
+
 ```json
 {
   "x402Version": 1,
@@ -63,19 +65,43 @@ The Client constructs and signs a standard Hive `transfer` operation using their
 }
 ```
 
+**v2 example:**
+
+```json
+{
+  "x402Version": 2,
+  "resource": {
+    "url": "https://api.example.com/premium-data",
+    "description": "Access to premium market data",
+    "mimeType": "application/json"
+  },
+  "accepts": [
+    {
+      "scheme": "exact",
+      "network": "hive:mainnet",
+      "amount": "0.050 HBD",
+      "payTo": "api-provider"
+    }
+  ]
+}
+```
+
+> In v2, `resource`, `description`, and `mimeType` are lifted to the `PaymentRequired` envelope. The payment amount field is `amount` (v2) instead of `maxAmountRequired` (v1).
+
 **Field Definitions:**
 
 | Field | Type | Description |
 |:---|:---|:---|
-| `x402Version` | `number` | Protocol version. Must be `1`. |
+| `x402Version` | `number` | Protocol version. `1` or `2`. |
 | `scheme` | `string` | Must be `"exact"`. |
 | `network` | `string` | Must be `"hive:mainnet"`. |
-| `maxAmountRequired` | `string` | HBD amount in Hive asset format: `"X.XXX HBD"` (3 decimal places). |
-| `resource` | `string` | URL of the protected resource. |
-| `description` | `string?` | Human-readable description of the resource. |
-| `mimeType` | `string?` | MIME type of the resource content. |
+| `maxAmountRequired` | `string` | **(v1 only)** HBD amount: `"X.XXX HBD"` (3 decimal places). |
+| `amount` | `string` | **(v2 only)** HBD amount: `"X.XXX HBD"` (3 decimal places). Same semantics as v1's `maxAmountRequired`. |
+| `resource` | `string` | **(v1 only)** URL of the protected resource. In v2, moved to `PaymentRequired.resource.url`. |
+| `description` | `string?` | **(v1 only)** Human-readable description. In v2, moved to `PaymentRequired.resource.description`. |
+| `mimeType` | `string?` | **(v1 only)** MIME type. In v2, moved to `PaymentRequired.resource.mimeType`. |
 | `payTo` | `string` | Hive account name that will receive payment. |
-| `validBefore` | `string` | ISO 8601 timestamp after which the payment requirements expire. |
+| `validBefore` | `string` | **(v1 only)** ISO 8601 expiration timestamp. In v2, passed separately. |
 | `extra` | `object?` | Optional extension data. |
 
 > **Note on `payTo`:** Hive account names are 3–16 character lowercase strings (letters, digits, dots, hyphens), e.g., `"ecency"`, `"api-provider"`. They are human-readable — no hex addresses.
@@ -134,7 +160,7 @@ The Client constructs the payment as follows:
 4. **Construct transfer operation**:
    - `from`: Client's Hive account name
    - `to`: `paymentRequirements.payTo`
-   - `amount`: `paymentRequirements.maxAmountRequired` (e.g., `"0.050 HBD"`)
+   - `amount`: the payment amount from `paymentRequirements` (`maxAmountRequired` in v1, `amount` in v2)
    - `memo`: `"x402:{nonce}"`
 5. **Sign transaction**: `cryptoUtils.signTransaction(tx, activePrivateKey, chainId)` where `chainId` is `beeab0de00000000000000000000000000000000000000000000000000000000` (Hive mainnet chain ID, 32 bytes).
 6. **Encode**: Base64-encode the JSON `PaymentPayload` and set as the `x-payment` request header.
@@ -156,7 +182,7 @@ A facilitator verifying an `exact` scheme on Hive MUST enforce all of the follow
 
 - `transfer.to` MUST equal `paymentRequirements.payTo`.
 - `transfer.amount` MUST end with `" HBD"`. Only HBD payments are accepted.
-- The numeric portion of `transfer.amount` MUST be ≥ the numeric portion of `paymentRequirements.maxAmountRequired`.
+- The numeric portion of `transfer.amount` MUST be ≥ the numeric portion of the payment amount field (`paymentRequirements.maxAmountRequired` in v1, `paymentRequirements.amount` in v2).
 
 ### 3. Temporal Validity
 
@@ -272,7 +298,7 @@ On failure:
 
 A complete TypeScript implementation is available at [`@hiveio/x402`](https://github.com/ecency/hive-x402) on npm:
 
-```
+```bash
 npm install @hiveio/x402
 ```
 

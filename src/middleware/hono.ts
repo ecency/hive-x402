@@ -107,16 +107,18 @@ export function honoPaywall(options: HonoPaywallOptions) {
     }
 
     try {
-      // Use the amount from the signed transaction — don't recompute dynamic price.
-      const paidAmount = (paymentPayload.payload.signedTransaction.operations[0]?.[1] as any)?.amount;
+      // Recompute the server-side price so the facilitator verifies the tx paid enough.
+      const pricingCtx = { resource: c.req.path, raw: c };
+      const serverAmount = typeof amount === "function" ? await amount(pricingCtx) : amount;
 
+      // Build requirements using the server's authoritative price
       let paymentRequirements;
       if (isV1Payload(paymentPayload)) {
         paymentRequirements = {
           x402Version: X402_VERSION as 1,
           scheme: "exact" as const,
           network: HIVE_NETWORK,
-          maxAmountRequired: paidAmount ?? (typeof amount === "string" ? amount : "0.001 HBD"),
+          maxAmountRequired: serverAmount,
           resource: c.req.path,
           payTo: receivingAccount,
           validBefore,
@@ -125,7 +127,7 @@ export function honoPaywall(options: HonoPaywallOptions) {
         paymentRequirements = {
           scheme: "exact" as const,
           network: HIVE_NETWORK,
-          amount: paidAmount ?? (typeof amount === "string" ? amount : "0.001 HBD"),
+          amount: serverAmount,
           payTo: receivingAccount,
         };
       }

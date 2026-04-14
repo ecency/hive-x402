@@ -31,6 +31,14 @@ export async function signPayment(opts: SignPaymentOptions): Promise<string> {
   const privKey = PrivateKey.fromString(activeKey);
   const version = opts.x402Version ?? (isV1Requirements(requirements) ? 1 : 2);
 
+  // Validate that explicit version matches requirements shape
+  if (opts.x402Version === 2 && isV1Requirements(requirements)) {
+    throw new Error("x402Version 2 requested but requirements have v1 shape (maxAmountRequired)");
+  }
+  if (opts.x402Version === 1 && !isV1Requirements(requirements)) {
+    throw new Error("x402Version 1 requested but requirements have v2 shape (amount)");
+  }
+
   // Build unsigned transaction
   const { transaction, nonce } = await buildPaymentTransaction({
     account,

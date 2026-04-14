@@ -51,9 +51,16 @@ export function paywall(options: PaywallOptions) {
 
     if (!paymentHeader) {
       // No payment — resolve dynamic pricing and return 402 with requirements
-      const pricingCtx = { resource: req.originalUrl, raw: req };
-      const resolvedAmount = typeof amount === "function" ? await amount(pricingCtx) : amount;
-      const resolvedExtra = typeof extra === "function" ? await extra(pricingCtx) : extra;
+      let resolvedAmount: string;
+      let resolvedExtra: Record<string, unknown> | undefined;
+      try {
+        const pricingCtx = { resource: req.originalUrl, raw: req };
+        resolvedAmount = typeof amount === "function" ? await amount(pricingCtx) : amount;
+        resolvedExtra = typeof extra === "function" ? await extra(pricingCtx) : extra;
+      } catch (err) {
+        next(err);
+        return;
+      }
       const validBefore = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
       let paymentRequired: PaymentRequiredV1 | PaymentRequiredV2;
@@ -104,19 +111,19 @@ export function paywall(options: PaywallOptions) {
     }
 
     try {
-      // Use the amount from the signed transaction — don't recompute dynamic price.
-      // The facilitator independently verifies the transfer details (amount, recipient, signature).
-      const paidAmount = (paymentPayload.payload.signedTransaction.operations[0]?.[1] as any)?.amount;
+      // Recompute the server-side price so the facilitator verifies the tx paid enough.
+      const pricingCtx = { resource: req.originalUrl, raw: req };
+      const serverAmount = typeof amount === "function" ? await amount(pricingCtx) : amount;
       const validBefore = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
-      // Build requirements matching the payload version for the facilitator
+      // Build requirements using the server's authoritative price
       let paymentRequirements;
       if (isV1Payload(paymentPayload)) {
         paymentRequirements = {
           x402Version: X402_VERSION as 1,
           scheme: "exact" as const,
           network: HIVE_NETWORK,
-          maxAmountRequired: paidAmount ?? (typeof amount === "string" ? amount : "0.001 HBD"),
+          maxAmountRequired: serverAmount,
           resource: req.originalUrl,
           payTo: receivingAccount,
           validBefore,
@@ -125,18 +132,37 @@ export function paywall(options: PaywallOptions) {
         paymentRequirements = {
           scheme: "exact" as const,
           network: HIVE_NETWORK,
-          amount: paidAmount ?? (typeof amount === "string" ? amount : "0.001 HBD"),
+          amount: serverAmount,
           payTo: receivingAccount,
         };
       }
 
       // Step 1: Verify
-      const verifyRes = await fetch(`${facilitatorUrl}/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentPayload, paymentRequirements, validBefore }),
-      });
-      const verifyResult: VerifyResponse = await verifyRes.json();
+      const verifyController = new AbortController();
+      const verifyTimer = setTimeout(() => verifyController.abort(), 15_000);
+      let verifyResult: VerifyResponse;
+      try {
+        const verifyRes = await fetch(`${facilitatorUrl}/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paymentPayload, paymentRequirements, validBefore }),
+          signal: verifyController.signal,
+        });
+        clearTimeout(verifyTimer);
+        if (!verifyRes.ok) {
+          const body = await verifyRes.text().catch(() => "");
+          res.status(502).json({ error: "Facilitator verify error", status: verifyRes.status, body });
+          return;
+        }
+        verifyResult = await verifyRes.json() as VerifyResponse;
+      } catch (err) {
+        clearTimeout(verifyTimer);
+        if (err instanceof Error && err.name === "AbortError") {
+          res.status(502).json({ error: "Facilitator verify timed out" });
+          return;
+        }
+        throw err;
+      }
 
       if (!verifyResult.isValid) {
         res.status(402).json({ error: "Payment verification failed", reason: verifyResult.invalidReason });
@@ -144,12 +170,31 @@ export function paywall(options: PaywallOptions) {
       }
 
       // Step 2: Settle
-      const settleRes = await fetch(`${facilitatorUrl}/settle`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentPayload, paymentRequirements, validBefore }),
-      });
-      const settleResult: SettleResponse = await settleRes.json();
+      const settleController = new AbortController();
+      const settleTimer = setTimeout(() => settleController.abort(), 15_000);
+      let settleResult: SettleResponse;
+      try {
+        const settleRes = await fetch(`${facilitatorUrl}/settle`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paymentPayload, paymentRequirements, validBefore }),
+          signal: settleController.signal,
+        });
+        clearTimeout(settleTimer);
+        if (!settleRes.ok) {
+          const body = await settleRes.text().catch(() => "");
+          res.status(502).json({ error: "Facilitator settle error", status: settleRes.status, body });
+          return;
+        }
+        settleResult = await settleRes.json() as SettleResponse;
+      } catch (err) {
+        clearTimeout(settleTimer);
+        if (err instanceof Error && err.name === "AbortError") {
+          res.status(502).json({ error: "Facilitator settle timed out" });
+          return;
+        }
+        throw err;
+      }
 
       if (!settleResult.success) {
         res.status(402).json({ error: "Payment settlement failed", reason: settleResult.errorReason });

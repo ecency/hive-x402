@@ -248,14 +248,16 @@ const response = await client.fetch("https://api.example.com/premium");
 ```ts
 import { signPayment, parseRequirements } from "@hiveio/x402/client";
 
-// Parse requirements from a 402 response
-const requirements = parseRequirements(response);
+// Parse requirements from a 402 response (auto-detects v1/v2)
+const { requirements, x402Version, resource } = parseRequirements(response);
 
 // Sign a payment (returns base64-encoded x-payment header value)
 const header = await signPayment({
   account: "alice",
   activeKey: "5K...",
-  requirements,
+  requirements,     // works with both v1 and v2 requirements
+  x402Version,      // auto-detected, or override with 1 | 2
+  resource,         // v2: resource info from PaymentRequired envelope
 });
 ```
 
@@ -281,11 +283,23 @@ const header = encodePaymentPayload({ signedTransaction: signedTx, nonce });
 
 ## Types
 
+The library supports both x402 v1 and v2 wire formats. Middleware defaults to v2.
+
 ```ts
 import type {
+  // Union types (v1 | v2)
   PaymentRequirements,
   PaymentRequired,
   PaymentPayload,
+  // Versioned types (use when you need a specific version)
+  PaymentRequirementsV1,  // has maxAmountRequired, resource, validBefore
+  PaymentRequirementsV2,  // has amount (resource/validBefore moved to envelope)
+  PaymentRequiredV1,
+  PaymentRequiredV2,
+  PaymentPayloadV1,
+  PaymentPayloadV2,
+  ResourceInfo,
+  // Other types
   VerifyRequest,
   VerifyResponse,
   SettleRequest,
@@ -299,10 +313,13 @@ import type {
 import {
   encodePayment,
   decodePayment,
-  formatHBD,     // formatHBD(0.05) → "0.050 HBD"
-  parseHBD,      // parseHBD("0.050 HBD") → 0.05
-  X402_VERSION,  // 1
-  HIVE_NETWORK,  // "hive:mainnet"
+  getRequiredAmount,  // extract amount from v1 or v2 requirements
+  isV1Requirements,   // type guard: v1 has maxAmountRequired
+  formatHBD,          // formatHBD(0.05) → "0.050 HBD"
+  parseHBD,           // parseHBD("0.050 HBD") → 0.05
+  X402_VERSION,       // 1
+  X402_VERSION_V2,    // 2
+  HIVE_NETWORK,       // "hive:mainnet"
 } from "@hiveio/x402/types";
 ```
 

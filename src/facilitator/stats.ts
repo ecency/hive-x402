@@ -49,6 +49,11 @@ export const STATS_HTML = `<!DOCTYPE html>
 </div>
 
 <script>
+function esc(s) {
+  var d = document.createElement('div');
+  d.appendChild(document.createTextNode(s));
+  return d.innerHTML;
+}
 function fmt(n) { return n.toLocaleString(); }
 function fmtDuration(s) {
   if (s < 60) return s + 's';
@@ -90,7 +95,7 @@ async function refresh() {
       : eps.map(function(e) {
           const p = e[0], d = e[1];
           const avg = d.requests > 0 ? Math.round(d.totalLatencyMs / d.requests) : 0;
-          return '<tr><td class="mono">' + p + '</td><td>' + fmt(d.requests) +
+          return '<tr><td class="mono">' + esc(p) + '</td><td>' + fmt(d.requests) +
             '</td><td class="green">' + fmt(d.success) +
             '</td><td class="red">' + fmt(d.failures) +
             '</td><td>' + avg + 'ms</td></tr>';
@@ -101,10 +106,10 @@ async function refresh() {
       ? '<tr><td colspan="5" class="empty">No settlements yet</td></tr>'
       : stl.map(function(s) {
           const short = s.txId ? s.txId.substring(0, 12) + '...' : '';
-          return '<tr><td>' + fmtTime(s.timestamp) + '</td><td class="mono">' + s.payer +
-            '</td><td class="yellow">' + s.amount +
-            '</td><td class="mono">' + (s.resource || '-') +
-            '</td><td class="mono">' + short + '</td></tr>';
+          return '<tr><td>' + esc(fmtTime(s.timestamp)) + '</td><td class="mono">' + esc(s.payer || '') +
+            '</td><td class="yellow">' + esc(s.amount || '') +
+            '</td><td class="mono">' + esc(s.resource || '-') +
+            '</td><td class="mono">' + esc(short) + '</td></tr>';
         }).join('');
   } catch(e) {
     document.getElementById('uptime').textContent = 'Error loading metrics';

@@ -118,17 +118,19 @@ export function withPaywall(
     }
 
     try {
-      // Use the amount from the signed transaction — don't recompute dynamic price.
-      const paidAmount = (paymentPayload.payload.signedTransaction.operations[0]?.[1] as any)?.amount;
+      // Recompute the server-side price so the facilitator verifies the tx paid enough.
+      const pricingCtx = { resource: url.pathname, raw: req };
+      const serverAmount = typeof amount === "function" ? await amount(pricingCtx) : amount;
       const validBefore = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
+      // Build requirements using the server's authoritative price
       let paymentRequirements;
       if (isV1Payload(paymentPayload)) {
         paymentRequirements = {
           x402Version: X402_VERSION as 1,
           scheme: "exact" as const,
           network: HIVE_NETWORK,
-          maxAmountRequired: paidAmount ?? (typeof amount === "string" ? amount : "0.001 HBD"),
+          maxAmountRequired: serverAmount,
           resource: url.pathname,
           payTo: receivingAccount,
           validBefore,
@@ -137,18 +139,35 @@ export function withPaywall(
         paymentRequirements = {
           scheme: "exact" as const,
           network: HIVE_NETWORK,
-          amount: paidAmount ?? (typeof amount === "string" ? amount : "0.001 HBD"),
+          amount: serverAmount,
           payTo: receivingAccount,
         };
       }
 
       // Step 1: Verify
-      const verifyRes = await fetch(`${facilitatorUrl}/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentPayload, paymentRequirements, validBefore }),
-      });
-      const verifyResult: VerifyResponse = await verifyRes.json();
+      const verifyController = new AbortController();
+      const verifyTimer = setTimeout(() => verifyController.abort(), 15_000);
+      let verifyResult: VerifyResponse;
+      try {
+        const verifyRes = await fetch(`${facilitatorUrl}/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paymentPayload, paymentRequirements, validBefore }),
+          signal: verifyController.signal,
+        });
+        clearTimeout(verifyTimer);
+        if (!verifyRes.ok) {
+          const body = await verifyRes.text().catch(() => "");
+          return Response.json({ error: "Facilitator verify error", status: verifyRes.status, body }, { status: 502 });
+        }
+        verifyResult = await verifyRes.json() as VerifyResponse;
+      } catch (err) {
+        clearTimeout(verifyTimer);
+        if (err instanceof Error && err.name === "AbortError") {
+          return Response.json({ error: "Facilitator verify timed out" }, { status: 502 });
+        }
+        throw err;
+      }
 
       if (!verifyResult.isValid) {
         return Response.json(
@@ -158,12 +177,29 @@ export function withPaywall(
       }
 
       // Step 2: Settle
-      const settleRes = await fetch(`${facilitatorUrl}/settle`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentPayload, paymentRequirements, validBefore }),
-      });
-      const settleResult: SettleResponse = await settleRes.json();
+      const settleController = new AbortController();
+      const settleTimer = setTimeout(() => settleController.abort(), 15_000);
+      let settleResult: SettleResponse;
+      try {
+        const settleRes = await fetch(`${facilitatorUrl}/settle`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paymentPayload, paymentRequirements, validBefore }),
+          signal: settleController.signal,
+        });
+        clearTimeout(settleTimer);
+        if (!settleRes.ok) {
+          const body = await settleRes.text().catch(() => "");
+          return Response.json({ error: "Facilitator settle error", status: settleRes.status, body }, { status: 502 });
+        }
+        settleResult = await settleRes.json() as SettleResponse;
+      } catch (err) {
+        clearTimeout(settleTimer);
+        if (err instanceof Error && err.name === "AbortError") {
+          return Response.json({ error: "Facilitator settle timed out" }, { status: 502 });
+        }
+        throw err;
+      }
 
       if (!settleResult.success) {
         return Response.json(

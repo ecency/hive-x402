@@ -19,6 +19,10 @@ export interface FacilitatorOptions {
   hiveClient?: Client;
   /** Rate limit options. Set to false to disable. */
   rateLimit?: RateLimitOptions | false;
+  /** Enable /metrics and /stats endpoints. Default: false (disabled). */
+  enableMetrics?: boolean;
+  /** Bearer token required to access /metrics and /stats. Also reads METRICS_TOKEN env var. */
+  metricsToken?: string;
 }
 
 /**
@@ -52,13 +56,27 @@ export function createFacilitator(options: FacilitatorOptions = {}): Express {
     res.json({ networks: [HIVE_NETWORK] });
   });
 
-  app.get("/metrics", (_req, res) => {
-    res.json(metrics.snapshot());
-  });
+  if (options.enableMetrics) {
+    const token = options.metricsToken ?? process.env.METRICS_TOKEN;
+    const metricsAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+      if (token) {
+        const auth = req.headers.authorization;
+        if (!auth || auth !== `Bearer ${token}`) {
+          res.status(403).json({ error: "Forbidden" });
+          return;
+        }
+      }
+      next();
+    };
 
-  app.get("/stats", (_req, res) => {
-    res.type("html").send(STATS_HTML);
-  });
+    app.get("/metrics", metricsAuth, (_req, res) => {
+      res.json(metrics.snapshot());
+    });
+
+    app.get("/stats", metricsAuth, (_req, res) => {
+      res.type("html").send(STATS_HTML);
+    });
+  }
 
   app.post("/verify", createVerifyRoute(nonceStore, options.hiveClient));
   app.post("/settle", createSettleRoute(nonceStore, options.hiveClient, metrics));

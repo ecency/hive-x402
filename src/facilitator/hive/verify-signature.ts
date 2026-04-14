@@ -71,8 +71,11 @@ export async function verifySignature(
   // 6. Check validBefore from requirements
   const validBeforeStr = getValidBefore(requirements) ?? options.validBefore;
   if (validBeforeStr) {
-    const validBefore = new Date(validBeforeStr);
-    if (new Date() >= validBefore) {
+    const validBeforeMs = Date.parse(validBeforeStr);
+    if (Number.isNaN(validBeforeMs)) {
+      return { isValid: false, invalidReason: "Malformed validBefore timestamp" };
+    }
+    if (Date.now() >= validBeforeMs) {
       return { isValid: false, invalidReason: "Payment requirements have expired (validBefore)" };
     }
   }

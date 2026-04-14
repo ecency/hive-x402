@@ -89,6 +89,7 @@ describe("Dynamic pricing middleware", () => {
     const facilitatorApp = createFacilitator({
       nonceStore: new MemoryNonceStore(),
       hiveClient: createMockHiveClient(),
+      enableMetrics: true,
     });
     facilitatorServer = await new Promise<Server>((resolve) => {
       const s = facilitatorApp.listen(0, () => resolve(s));
@@ -189,33 +190,32 @@ describe("Dynamic pricing middleware", () => {
     assert.equal(getRequiredAmount(decoded.accepts[0]), "1.000 HBD");
   });
 
-  it("price callback is NOT called on paid request path", async () => {
+  it("price callback IS called on paid request path to enforce server price", async () => {
     const before = priceCallCount;
 
     // First request — 402, callback is called
     await fetch(`http://localhost:${apiPort}/api/dynamic?tier=basic`);
     assert.equal(priceCallCount, before + 1);
 
-    // Second request with payment — callback should NOT be called again
+    // Second request with payment — callback is called again to verify against server price
     const countBeforePaid = priceCallCount;
     const { paymentHeader } = buildSignedPayment({ amount: "0.050 HBD" });
     await fetch(`http://localhost:${apiPort}/api/dynamic?tier=basic`, {
       headers: { "x-payment": paymentHeader },
     });
-    assert.equal(priceCallCount, countBeforePaid, "Price callback should not be called on paid request");
+    assert.equal(priceCallCount, countBeforePaid + 1, "Price callback should be called to enforce server-side price");
   });
 
-  it("paid request succeeds even if price callback would return different amount", async () => {
-    // Client got quoted 0.050 HBD and signed for that amount.
-    // Even though ?tier=premium would return 1.000 HBD, the paid path
-    // should NOT recompute and should use the signed amount instead.
+  it("rejects underpayment when price callback returns higher amount", async () => {
+    // Client signed for 0.050 HBD but ?tier=premium prices at 1.000 HBD.
+    // The server recomputes the price and the facilitator should reject.
     const { paymentHeader } = buildSignedPayment({ amount: "0.050 HBD" });
     const res = await fetch(`http://localhost:${apiPort}/api/dynamic?tier=premium`, {
       headers: { "x-payment": paymentHeader },
     });
-    assert.equal(res.status, 200, "Should succeed — facilitator validates the real tx, not a recomputed price");
+    assert.equal(res.status, 402, "Should reject — server enforces its own price");
     const data = await res.json();
-    assert.equal(data.payer, TEST_SENDER);
+    assert.ok(data.reason || data.error, "Should have an error reason");
   });
 
   it("mutable price: payment quoted at old price succeeds after price changes", async () => {
@@ -263,6 +263,7 @@ describe("Metrics self-exclusion", () => {
     const app = createFacilitator({
       nonceStore: new MemoryNonceStore(),
       hiveClient: createMockHiveClient(),
+      enableMetrics: true,
     });
     server = await new Promise<Server>((resolve) => {
       const s = app.listen(0, () => resolve(s));
