@@ -4,8 +4,9 @@ import { verifySignature } from "../hive/verify-signature.js";
 import { broadcastTransaction } from "../hive/broadcast.js";
 import { extractMemoNonce } from "../hive/memo.js";
 import type { NonceStore, SettleRequest, SettleResponse } from "../../types.js";
+import type { MetricsCollector } from "../middleware/metrics.js";
 
-export function createSettleRoute(nonceStore: NonceStore, hiveClient?: Client) {
+export function createSettleRoute(nonceStore: NonceStore, hiveClient?: Client, metrics?: MetricsCollector) {
   return async (req: Request, res: Response) => {
     try {
       const { paymentPayload, paymentRequirements } = req.body as SettleRequest;
@@ -48,6 +49,17 @@ export function createSettleRoute(nonceStore: NonceStore, hiveClient?: Client) {
 
       // Mark nonce as spent AFTER successful broadcast
       await nonceStore.markSpent(nonce);
+
+      // Record settlement metrics
+      if (metrics && verification.payer) {
+        const transfer = signedTransaction.operations[0][1] as { amount: string };
+        metrics.recordSettlement(
+          verification.payer,
+          transfer.amount,
+          confirmation.id,
+          paymentRequirements.resource ?? "",
+        );
+      }
 
       res.json({
         success: true,

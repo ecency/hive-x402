@@ -11,13 +11,15 @@ import {
   type PaymentRequired,
   type VerifyResponse,
   type SettleResponse,
+  type PriceFunction,
+  type ExtraFunction,
 } from "../types.js";
 
 const FACILITATOR_TIMEOUT_MS = 15_000;
 
 export interface HonoPaywallOptions {
-  /** Amount in HBD string, e.g. "1.000 HBD" */
-  amount: string;
+  /** Static HBD amount (e.g. "1.000 HBD") or a function that computes it per-request */
+  amount: string | PriceFunction<Context>;
   /** Hive account to receive payment */
   receivingAccount: string;
   /** URL of the facilitator service, e.g. "http://localhost:4020" */
@@ -26,6 +28,8 @@ export interface HonoPaywallOptions {
   description?: string;
   /** Response MIME type (optional) */
   mimeType?: string;
+  /** Static extra fields or a function that computes them per-request */
+  extra?: Record<string, unknown> | ExtraFunction<Context>;
 }
 
 /**
@@ -38,7 +42,7 @@ export interface HonoPaywallOptions {
  *   app.post("/subscribe", honoPaywall({ amount: "1.000 HBD", ... }), handler);
  */
 export function honoPaywall(options: HonoPaywallOptions) {
-  const { amount, receivingAccount, facilitatorUrl, description, mimeType } =
+  const { amount, receivingAccount, facilitatorUrl, description, mimeType, extra } =
     options;
 
   return async (c: Context, next: Next) => {
@@ -47,17 +51,23 @@ export function honoPaywall(options: HonoPaywallOptions) {
     // Compute validBefore once so the 402 response and verify/settle use the same window
     const validBefore = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
+    // Resolve dynamic pricing and extra fields
+    const pricingCtx = { resource: c.req.path, raw: c };
+    const resolvedAmount = typeof amount === "function" ? await amount(pricingCtx) : amount;
+    const resolvedExtra = typeof extra === "function" ? await extra(pricingCtx) : extra;
+
     if (!paymentHeader) {
       const requirements: PaymentRequirements = {
         x402Version: X402_VERSION,
         scheme: "exact",
         network: HIVE_NETWORK,
-        maxAmountRequired: amount,
+        maxAmountRequired: resolvedAmount,
         resource: c.req.path,
         payTo: receivingAccount,
         validBefore,
         description,
         mimeType,
+        extra: resolvedExtra,
       };
 
       const paymentRequired: PaymentRequired = {
@@ -81,7 +91,7 @@ export function honoPaywall(options: HonoPaywallOptions) {
         x402Version: X402_VERSION,
         scheme: "exact",
         network: HIVE_NETWORK,
-        maxAmountRequired: amount,
+        maxAmountRequired: resolvedAmount,
         resource: c.req.path,
         payTo: receivingAccount,
         validBefore,

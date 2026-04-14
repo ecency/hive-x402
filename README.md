@@ -96,7 +96,67 @@ app.get("/api/premium", honoPaywall({
 export default app;
 ```
 
-### 5. Pay for content (AI agent / client)
+### 5. Dynamic pricing
+
+All middleware supports a **price callback** instead of a static amount, plus an optional **`extra`** field to pass metadata to clients.
+
+```ts
+import express from "express";
+import { paywall } from "@hiveio/x402/middleware";
+import type { PricingContext } from "@hiveio/x402/types";
+import type { Request } from "express";
+
+app.get("/api/ai", paywall({
+  // Price based on query param — return HBD string
+  amount: ({ raw: req }: PricingContext<Request>) => {
+    const model = req.query.model ?? "basic";
+    return model === "premium" ? "0.500 HBD" : "0.050 HBD";
+  },
+  // Extra fields included in the 402 response for client visibility
+  extra: {
+    tiers: { basic: "0.050 HBD", premium: "0.500 HBD" },
+  },
+  receivingAccount: "your-hive-account",
+  facilitatorUrl: "http://localhost:4020",
+}), handler);
+```
+
+The `amount` field accepts `string | PriceFunction<T>` where `T` is the framework's request type (`Request` for Express/Next.js, `Context` for Hono). Async functions are supported — useful for fetching external pricing data.
+
+The `extra` field accepts `Record<string, unknown> | ExtraFunction<T>` — static metadata or a per-request function. It's included in the `PaymentRequirements` returned to the client in the 402 response.
+
+**Next.js:**
+```ts
+import { withPaywall } from "@hiveio/x402/middleware/nextjs";
+
+export const GET = withPaywall({
+  amount: ({ raw: req }) => {
+    const url = new URL(req.url);
+    return url.searchParams.get("tier") === "pro" ? "1.000 HBD" : "0.100 HBD";
+  },
+  receivingAccount: "your-hive-account",
+  facilitatorUrl: "http://localhost:4020",
+}, handler);
+```
+
+**Hono:**
+```ts
+import { honoPaywall } from "@hiveio/x402/middleware/hono";
+import type { PricingContext } from "@hiveio/x402/types";
+import type { Context } from "hono";
+
+app.get("/api/premium", honoPaywall({
+  amount: ({ raw: c }: PricingContext<Context>) => {
+    return c.req.query("tier") === "pro" ? "1.000 HBD" : "0.100 HBD";
+  },
+  receivingAccount: "your-hive-account",
+  facilitatorUrl: "http://localhost:4020",
+}), handler);
+```
+
+See [`examples/dynamic-pricing-server.ts`](./examples/dynamic-pricing-server.ts) for a complete runnable example.
+
+### 6. Pay for content (AI agent / client)
 
 ```ts
 import { HiveX402Client } from "@hiveio/x402/client";
@@ -143,6 +203,8 @@ const app = createFacilitator({
 |--------|------|-------------|
 | GET | `/health` | Health check |
 | GET | `/supported-networks` | Returns `["hive:mainnet"]` |
+| GET | `/metrics` | JSON metrics (requests, settlements, HBD volume, latencies) |
+| GET | `/stats` | Live HTML dashboard with auto-refresh |
 | POST | `/verify` | Verify a signed payment |
 | POST | `/settle` | Verify + broadcast + mark nonce spent |
 
@@ -229,6 +291,9 @@ import type {
   SettleRequest,
   SettleResponse,
   NonceStore,
+  PricingContext,
+  PriceFunction,
+  ExtraFunction,
 } from "@hiveio/x402/types";
 
 import {

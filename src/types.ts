@@ -29,6 +29,29 @@ export const HIVE_API_NODES = [
   "https://hive-api.arcange.eu",
 ];
 
+// ─── Pricing ────────────────────────────────────────────────────────────────
+
+/**
+ * Context passed to dynamic pricing callbacks.
+ * Framework-specific request is available via `raw`.
+ */
+export interface PricingContext<TRaw = unknown> {
+  /** The resource path being requested */
+  resource: string;
+  /** The raw framework request (Express Request, Web Request, Hono Context) */
+  raw: TRaw;
+}
+
+/** A function that computes the HBD price per-request. */
+export type PriceFunction<TRaw = unknown> = (
+  ctx: PricingContext<TRaw>,
+) => string | Promise<string>;
+
+/** A function that computes extra fields per-request. */
+export type ExtraFunction<TRaw = unknown> = (
+  ctx: PricingContext<TRaw>,
+) => Record<string, unknown> | Promise<Record<string, unknown>>;
+
 // ─── Payment Protocol Types ─────────────────────────────────────────────────
 
 export interface PaymentRequirements {

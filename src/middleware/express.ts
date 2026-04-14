@@ -10,11 +10,13 @@ import {
   type PaymentRequired,
   type VerifyResponse,
   type SettleResponse,
+  type PriceFunction,
+  type ExtraFunction,
 } from "../types.js";
 
 export interface PaywallOptions {
-  /** Amount in HBD string, e.g. "0.050 HBD" */
-  amount: string;
+  /** Static HBD amount (e.g. "0.050 HBD") or a function that computes it per-request */
+  amount: string | PriceFunction<Request>;
   /** Hive account to receive payment */
   receivingAccount: string;
   /** URL of the facilitator service, e.g. "http://localhost:4020" */
@@ -23,6 +25,8 @@ export interface PaywallOptions {
   description?: string;
   /** Response MIME type (optional) */
   mimeType?: string;
+  /** Static extra fields or a function that computes them per-request */
+  extra?: Record<string, unknown> | ExtraFunction<Request>;
 }
 
 /**
@@ -32,11 +36,16 @@ export interface PaywallOptions {
  *   app.get("/premium", paywall({ amount: "0.050 HBD", receivingAccount: "bob", facilitatorUrl: "..." }), handler);
  */
 export function paywall(options: PaywallOptions) {
-  const { amount, receivingAccount, facilitatorUrl, description, mimeType } =
+  const { amount, receivingAccount, facilitatorUrl, description, mimeType, extra } =
     options;
 
   return async (req: Request, res: Response, next: NextFunction) => {
     const paymentHeader = req.headers[HEADER_PAYMENT] as string | undefined;
+
+    // Resolve dynamic pricing and extra fields
+    const pricingCtx = { resource: req.originalUrl, raw: req };
+    const resolvedAmount = typeof amount === "function" ? await amount(pricingCtx) : amount;
+    const resolvedExtra = typeof extra === "function" ? await extra(pricingCtx) : extra;
 
     if (!paymentHeader) {
       // No payment — return 402 with requirements
@@ -44,12 +53,13 @@ export function paywall(options: PaywallOptions) {
         x402Version: X402_VERSION,
         scheme: "exact",
         network: HIVE_NETWORK,
-        maxAmountRequired: amount,
+        maxAmountRequired: resolvedAmount,
         resource: req.originalUrl,
         payTo: receivingAccount,
         validBefore: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
         description,
         mimeType,
+        extra: resolvedExtra,
       };
 
       const paymentRequired: PaymentRequired = {
@@ -79,7 +89,7 @@ export function paywall(options: PaywallOptions) {
         x402Version: X402_VERSION,
         scheme: "exact",
         network: HIVE_NETWORK,
-        maxAmountRequired: amount,
+        maxAmountRequired: resolvedAmount,
         resource: req.originalUrl,
         payTo: receivingAccount,
         validBefore: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
