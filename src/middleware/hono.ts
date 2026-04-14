@@ -51,12 +51,12 @@ export function honoPaywall(options: HonoPaywallOptions) {
     // Compute validBefore once so the 402 response and verify/settle use the same window
     const validBefore = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
-    // Resolve dynamic pricing and extra fields
-    const pricingCtx = { resource: c.req.path, raw: c };
-    const resolvedAmount = typeof amount === "function" ? await amount(pricingCtx) : amount;
-    const resolvedExtra = typeof extra === "function" ? await extra(pricingCtx) : extra;
-
     if (!paymentHeader) {
+      // No payment — resolve dynamic pricing and return 402 with requirements
+      const pricingCtx = { resource: c.req.path, raw: c };
+      const resolvedAmount = typeof amount === "function" ? await amount(pricingCtx) : amount;
+      const resolvedExtra = typeof extra === "function" ? await extra(pricingCtx) : extra;
+
       const requirements: PaymentRequirements = {
         x402Version: X402_VERSION,
         scheme: "exact",
@@ -87,11 +87,14 @@ export function honoPaywall(options: HonoPaywallOptions) {
     }
 
     try {
+      // Use the amount from the signed transaction — don't recompute dynamic price.
+      const paidAmount = (paymentPayload.payload.signedTransaction.operations[0]?.[1] as any)?.amount;
+
       const paymentRequirements: PaymentRequirements = {
         x402Version: X402_VERSION,
         scheme: "exact",
         network: HIVE_NETWORK,
-        maxAmountRequired: resolvedAmount,
+        maxAmountRequired: paidAmount ?? (typeof amount === "string" ? amount : "0.001 HBD"),
         resource: c.req.path,
         payTo: receivingAccount,
         validBefore,

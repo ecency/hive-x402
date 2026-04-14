@@ -55,12 +55,12 @@ export function withPaywall(
     const paymentHeader = req.headers.get(HEADER_PAYMENT);
     const url = new URL(req.url);
 
-    // Resolve dynamic pricing and extra fields
-    const pricingCtx = { resource: url.pathname, raw: req };
-    const resolvedAmount = typeof amount === "function" ? await amount(pricingCtx) : amount;
-    const resolvedExtra = typeof extra === "function" ? await extra(pricingCtx) : extra;
-
     if (!paymentHeader) {
+      // No payment — resolve dynamic pricing and return 402 with requirements
+      const pricingCtx = { resource: url.pathname, raw: req };
+      const resolvedAmount = typeof amount === "function" ? await amount(pricingCtx) : amount;
+      const resolvedExtra = typeof extra === "function" ? await extra(pricingCtx) : extra;
+
       const requirements: PaymentRequirements = {
         x402Version: X402_VERSION,
         scheme: "exact",
@@ -97,11 +97,14 @@ export function withPaywall(
     }
 
     try {
+      // Use the amount from the signed transaction — don't recompute dynamic price.
+      const paidAmount = (paymentPayload.payload.signedTransaction.operations[0]?.[1] as any)?.amount;
+
       const paymentRequirements: PaymentRequirements = {
         x402Version: X402_VERSION,
         scheme: "exact",
         network: HIVE_NETWORK,
-        maxAmountRequired: resolvedAmount,
+        maxAmountRequired: paidAmount ?? (typeof amount === "string" ? amount : "0.001 HBD"),
         resource: url.pathname,
         payTo: receivingAccount,
         validBefore: new Date(Date.now() + 5 * 60 * 1000).toISOString(),

@@ -110,8 +110,15 @@ export class MetricsCollector {
 
 // ─── Express Middleware ─────────────────────────────────────────────────────
 
+const EXCLUDED_PATHS = new Set(["/metrics", "/stats"]);
+
 export function metricsMiddleware(collector: MetricsCollector) {
   return (req: Request, res: Response, next: NextFunction) => {
+    if (EXCLUDED_PATHS.has(req.path)) {
+      next();
+      return;
+    }
+
     const start = Date.now();
 
     res.on("finish", () => {
