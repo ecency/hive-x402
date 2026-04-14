@@ -3,12 +3,16 @@ import {
   HEADER_PAYMENT,
   HEADER_PAYMENT_RESPONSE,
   X402_VERSION,
+  X402_VERSION_V2,
   HIVE_NETWORK,
   decodePayment,
   encodePaymentRequired,
   utf8ToBase64,
-  type PaymentRequirements,
-  type PaymentRequired,
+  isV1Payload,
+  type PaymentRequirementsV1,
+  type PaymentRequirementsV2,
+  type PaymentRequiredV1,
+  type PaymentRequiredV2,
   type VerifyResponse,
   type SettleResponse,
   type PriceFunction,
@@ -30,6 +34,8 @@ export interface HonoPaywallOptions {
   mimeType?: string;
   /** Static extra fields or a function that computes them per-request */
   extra?: Record<string, unknown> | ExtraFunction<Context>;
+  /** Protocol version for 402 responses (default: 2) */
+  x402Version?: 1 | 2;
 }
 
 /**
@@ -44,6 +50,7 @@ export interface HonoPaywallOptions {
 export function honoPaywall(options: HonoPaywallOptions) {
   const { amount, receivingAccount, facilitatorUrl, description, mimeType, extra } =
     options;
+  const version = options.x402Version ?? 2;
 
   return async (c: Context, next: Next) => {
     const paymentHeader = c.req.header(HEADER_PAYMENT);
@@ -57,23 +64,36 @@ export function honoPaywall(options: HonoPaywallOptions) {
       const resolvedAmount = typeof amount === "function" ? await amount(pricingCtx) : amount;
       const resolvedExtra = typeof extra === "function" ? await extra(pricingCtx) : extra;
 
-      const requirements: PaymentRequirements = {
-        x402Version: X402_VERSION,
-        scheme: "exact",
-        network: HIVE_NETWORK,
-        maxAmountRequired: resolvedAmount,
-        resource: c.req.path,
-        payTo: receivingAccount,
-        validBefore,
-        description,
-        mimeType,
-        extra: resolvedExtra,
-      };
+      let paymentRequired: PaymentRequiredV1 | PaymentRequiredV2;
 
-      const paymentRequired: PaymentRequired = {
-        x402Version: X402_VERSION,
-        accepts: [requirements],
-      };
+      if (version === 1) {
+        const requirements: PaymentRequirementsV1 = {
+          x402Version: X402_VERSION as 1,
+          scheme: "exact",
+          network: HIVE_NETWORK,
+          maxAmountRequired: resolvedAmount,
+          resource: c.req.path,
+          payTo: receivingAccount,
+          validBefore,
+          description,
+          mimeType,
+          extra: resolvedExtra,
+        };
+        paymentRequired = { x402Version: X402_VERSION as 1, accepts: [requirements] };
+      } else {
+        const requirements: PaymentRequirementsV2 = {
+          scheme: "exact",
+          network: HIVE_NETWORK,
+          amount: resolvedAmount,
+          payTo: receivingAccount,
+          extra: resolvedExtra,
+        };
+        paymentRequired = {
+          x402Version: X402_VERSION_V2 as 2,
+          resource: { url: c.req.path, description, mimeType },
+          accepts: [requirements],
+        };
+      }
 
       c.header(HEADER_PAYMENT, encodePaymentRequired(paymentRequired));
       return c.json(paymentRequired, 402);
@@ -90,15 +110,25 @@ export function honoPaywall(options: HonoPaywallOptions) {
       // Use the amount from the signed transaction — don't recompute dynamic price.
       const paidAmount = (paymentPayload.payload.signedTransaction.operations[0]?.[1] as any)?.amount;
 
-      const paymentRequirements: PaymentRequirements = {
-        x402Version: X402_VERSION,
-        scheme: "exact",
-        network: HIVE_NETWORK,
-        maxAmountRequired: paidAmount ?? (typeof amount === "string" ? amount : "0.001 HBD"),
-        resource: c.req.path,
-        payTo: receivingAccount,
-        validBefore,
-      };
+      let paymentRequirements;
+      if (isV1Payload(paymentPayload)) {
+        paymentRequirements = {
+          x402Version: X402_VERSION as 1,
+          scheme: "exact" as const,
+          network: HIVE_NETWORK,
+          maxAmountRequired: paidAmount ?? (typeof amount === "string" ? amount : "0.001 HBD"),
+          resource: c.req.path,
+          payTo: receivingAccount,
+          validBefore,
+        };
+      } else {
+        paymentRequirements = {
+          scheme: "exact" as const,
+          network: HIVE_NETWORK,
+          amount: paidAmount ?? (typeof amount === "string" ? amount : "0.001 HBD"),
+          payTo: receivingAccount,
+        };
+      }
 
       // Step 1: Verify
       const verifyController = new AbortController();
@@ -108,7 +138,7 @@ export function honoPaywall(options: HonoPaywallOptions) {
         const verifyRes = await fetch(`${facilitatorUrl}/verify`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ paymentPayload, paymentRequirements }),
+          body: JSON.stringify({ paymentPayload, paymentRequirements, validBefore }),
           signal: verifyController.signal,
         });
         clearTimeout(verifyTimer);
@@ -143,7 +173,7 @@ export function honoPaywall(options: HonoPaywallOptions) {
         const settleRes = await fetch(`${facilitatorUrl}/settle`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ paymentPayload, paymentRequirements }),
+          body: JSON.stringify({ paymentPayload, paymentRequirements, validBefore }),
           signal: settleController.signal,
         });
         clearTimeout(settleTimer);

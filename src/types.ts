@@ -3,6 +3,7 @@ import type { SignedTransaction, Transaction } from "@hiveio/dhive";
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 export const X402_VERSION = 1;
+export const X402_VERSION_V2 = 2;
 export const HIVE_NETWORK = "hive:mainnet";
 export const HBD_ASSET = "HBD";
 
@@ -54,8 +55,10 @@ export type ExtraFunction<TRaw = unknown> = (
 
 // ─── Payment Protocol Types ─────────────────────────────────────────────────
 
-export interface PaymentRequirements {
-  x402Version: number;
+// ── V1 types ────────────────────────────────────────────────────────────────
+
+export interface PaymentRequirementsV1 {
+  x402Version: 1;
   scheme: "exact";
   network: typeof HIVE_NETWORK;
   maxAmountRequired: string;
@@ -67,19 +70,89 @@ export interface PaymentRequirements {
   extra?: Record<string, unknown>;
 }
 
-export interface PaymentRequired {
-  x402Version: number;
-  accepts: PaymentRequirements[];
+export interface PaymentRequiredV1 {
+  x402Version: 1;
+  accepts: PaymentRequirementsV1[];
 }
 
-export interface PaymentPayload {
-  x402Version: number;
+export interface PaymentPayloadV1 {
+  x402Version: 1;
   scheme: "exact";
   network: typeof HIVE_NETWORK;
   payload: {
     signedTransaction: SignedTransaction;
     nonce: string;
   };
+}
+
+// ── V2 types ────────────────────────────────────────────────────────────────
+
+export interface ResourceInfo {
+  url: string;
+  description?: string;
+  mimeType?: string;
+}
+
+export interface PaymentRequirementsV2 {
+  scheme: "exact";
+  network: typeof HIVE_NETWORK;
+  amount: string;
+  payTo: string;
+  maxTimeoutSeconds?: number;
+  extra?: Record<string, unknown>;
+}
+
+export interface PaymentRequiredV2 {
+  x402Version: 2;
+  resource: ResourceInfo;
+  accepts: PaymentRequirementsV2[];
+  extensions?: Record<string, unknown>;
+}
+
+export interface PaymentPayloadV2 {
+  x402Version: 2;
+  accepted: PaymentRequirementsV2;
+  resource?: ResourceInfo;
+  payload: {
+    signedTransaction: SignedTransaction;
+    nonce: string;
+  };
+  extensions?: Record<string, unknown>;
+}
+
+// ── Union types ─────────────────────────────────────────────────────────────
+
+export type PaymentRequirements = PaymentRequirementsV1 | PaymentRequirementsV2;
+export type PaymentRequired = PaymentRequiredV1 | PaymentRequiredV2;
+export type PaymentPayload = PaymentPayloadV1 | PaymentPayloadV2;
+
+// ── Version helpers ─────────────────────────────────────────────────────────
+
+export function isV1Requirements(r: PaymentRequirements): r is PaymentRequirementsV1 {
+  return "maxAmountRequired" in r;
+}
+
+export function isV1Payload(p: PaymentPayload): p is PaymentPayloadV1 {
+  return p.x402Version === 1;
+}
+
+export function isV2Payload(p: PaymentPayload): p is PaymentPayloadV2 {
+  return p.x402Version === 2;
+}
+
+/** Extract the payment amount string from either v1 or v2 PaymentRequirements. */
+export function getRequiredAmount(r: PaymentRequirements): string {
+  return isV1Requirements(r) ? r.maxAmountRequired : r.amount;
+}
+
+/** Extract validBefore from requirements (v1 has it inline, v2 doesn't — returns undefined). */
+export function getValidBefore(r: PaymentRequirements): string | undefined {
+  return isV1Requirements(r) ? r.validBefore : undefined;
+}
+
+/** Extract resource URL from requirements (v1 has it inline, v2 doesn't — returns undefined). */
+export function getResourceUrl(r: PaymentRequirements): string | undefined {
+  return isV1Requirements(r) ? r.resource : undefined;
 }
 
 export interface HiveTransferOp {
@@ -94,6 +167,8 @@ export interface HiveTransferOp {
 export interface VerifyRequest {
   paymentPayload: PaymentPayload;
   paymentRequirements: PaymentRequirements;
+  /** For v2, validBefore is passed separately since it's not in PaymentRequirementsV2 */
+  validBefore?: string;
 }
 
 export interface VerifyResponse {
@@ -105,6 +180,7 @@ export interface VerifyResponse {
 export interface SettleRequest {
   paymentPayload: PaymentPayload;
   paymentRequirements: PaymentRequirements;
+  validBefore?: string;
 }
 
 export interface SettleResponse {

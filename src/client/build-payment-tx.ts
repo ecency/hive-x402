@@ -2,6 +2,8 @@ import type { Transaction, TransferOperation } from "@hiveio/dhive";
 import {
   HIVE_API_NODES,
   hexToBytes,
+  getRequiredAmount,
+  getValidBefore,
   type PaymentRequirements,
 } from "../types.js";
 
@@ -51,8 +53,9 @@ export async function buildPaymentTransaction(
   // Expiration: min(60s from now, validBefore) — fail fast if already expired
   const now = Date.now();
   let expiryMs = now + 60 * 1000;
-  if (requirements.validBefore) {
-    const validBeforeMs = new Date(requirements.validBefore).getTime();
+  const validBefore = getValidBefore(requirements);
+  if (validBefore) {
+    const validBeforeMs = new Date(validBefore).getTime();
     if (Number.isNaN(validBeforeMs)) {
       throw new Error("Invalid validBefore timestamp in payment requirements");
     }
@@ -75,7 +78,7 @@ export async function buildPaymentTransaction(
         {
           from: account,
           to: requirements.payTo,
-          amount: requirements.maxAmountRequired,
+          amount: getRequiredAmount(requirements),
           memo: `x402:${nonce}`,
         },
       ] as TransferOperation,

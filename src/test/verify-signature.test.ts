@@ -6,7 +6,8 @@ import {
   HIVE_CHAIN_ID,
   X402_VERSION,
   HIVE_NETWORK,
-  type PaymentRequirements,
+  type PaymentRequirementsV1,
+  type PaymentRequirementsV2,
 } from "../types.js";
 import { verifySignature } from "../facilitator/hive/verify-signature.js";
 
@@ -57,15 +58,25 @@ function buildSignedTx(opts: {
   return cryptoUtils.signTransaction(tx, TEST_PRIVKEY, Buffer.from(HIVE_CHAIN_ID));
 }
 
-function reqs(overrides: Partial<PaymentRequirements> = {}): PaymentRequirements {
+function reqs(overrides: Partial<PaymentRequirementsV1> = {}): PaymentRequirementsV1 {
   return {
-    x402Version: X402_VERSION,
+    x402Version: X402_VERSION as 1,
     scheme: "exact",
     network: HIVE_NETWORK,
     maxAmountRequired: "0.050 HBD",
     resource: "/test",
     payTo: "bob",
     validBefore: new Date(Date.now() + 300_000).toISOString(),
+    ...overrides,
+  };
+}
+
+function reqsV2(overrides: Partial<PaymentRequirementsV2> = {}): PaymentRequirementsV2 {
+  return {
+    scheme: "exact",
+    network: HIVE_NETWORK,
+    amount: "0.050 HBD",
+    payTo: "bob",
     ...overrides,
   };
 }
@@ -152,5 +163,46 @@ describe("verifySignature", () => {
     const result = await verifySignature(signedTx, reqs(), { client: mockClient(TEST_PUBKEY) });
     assert.equal(result.isValid, false);
     assert.match(result.invalidReason!, /Expected exactly one/);
+  });
+
+  // ── V2 requirements tests ──────────────────────────────────────────────
+
+  it("accepts valid signature with v2 requirements", async () => {
+    const signedTx = buildSignedTx({});
+    const result = await verifySignature(signedTx, reqsV2(), {
+      client: mockClient(TEST_PUBKEY),
+      validBefore: new Date(Date.now() + 300_000).toISOString(),
+    });
+    assert.equal(result.isValid, true);
+    assert.equal(result.payer, "alice");
+  });
+
+  it("rejects insufficient amount with v2 requirements", async () => {
+    const signedTx = buildSignedTx({ amount: "0.010 HBD" });
+    const result = await verifySignature(signedTx, reqsV2(), {
+      client: mockClient(TEST_PUBKEY),
+      validBefore: new Date(Date.now() + 300_000).toISOString(),
+    });
+    assert.equal(result.isValid, false);
+    assert.match(result.invalidReason!, /Insufficient payment/);
+  });
+
+  it("accepts overpayment with v2 requirements", async () => {
+    const signedTx = buildSignedTx({ amount: "1.000 HBD" });
+    const result = await verifySignature(signedTx, reqsV2(), {
+      client: mockClient(TEST_PUBKEY),
+      validBefore: new Date(Date.now() + 300_000).toISOString(),
+    });
+    assert.equal(result.isValid, true);
+  });
+
+  it("rejects expired validBefore with v2 requirements", async () => {
+    const signedTx = buildSignedTx({});
+    const result = await verifySignature(signedTx, reqsV2(), {
+      client: mockClient(TEST_PUBKEY),
+      validBefore: new Date(Date.now() - 1000).toISOString(),
+    });
+    assert.equal(result.isValid, false);
+    assert.match(result.invalidReason!, /validBefore/);
   });
 });

@@ -10,12 +10,14 @@ import { withPaywall } from "../middleware/nextjs.js";
 import {
   HIVE_CHAIN_ID,
   X402_VERSION,
+  X402_VERSION_V2,
   HIVE_NETWORK,
   HEADER_PAYMENT,
   HEADER_PAYMENT_RESPONSE,
   encodePayment,
   decodePaymentRequired,
-  type PaymentPayload,
+  getRequiredAmount,
+  type PaymentPayloadV1,
   type NonceStore,
 } from "../types.js";
 
@@ -76,8 +78,8 @@ function buildSignedPayment(opts: { to?: string } = {}) {
   };
 
   const signedTx = cryptoUtils.signTransaction(tx, TEST_PRIVKEY, Buffer.from(HIVE_CHAIN_ID));
-  const payload: PaymentPayload = {
-    x402Version: X402_VERSION,
+  const payload: PaymentPayloadV1 = {
+    x402Version: X402_VERSION as 1,
     scheme: "exact",
     network: HIVE_NETWORK,
     payload: { signedTransaction: signedTx, nonce },
@@ -125,9 +127,9 @@ describe("Next.js withPaywall middleware", () => {
     assert.ok(paymentHeader);
 
     const decoded = decodePaymentRequired(paymentHeader);
-    assert.equal(decoded.x402Version, X402_VERSION);
+    assert.equal(decoded.x402Version, X402_VERSION_V2);
     assert.equal(decoded.accepts[0].network, HIVE_NETWORK);
-    assert.equal(decoded.accepts[0].maxAmountRequired, TEST_AMOUNT);
+    assert.equal(getRequiredAmount(decoded.accepts[0]), TEST_AMOUNT);
     assert.equal(decoded.accepts[0].payTo, TEST_RECEIVER);
   });
 

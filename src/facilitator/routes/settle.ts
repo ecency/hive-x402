@@ -9,7 +9,7 @@ import type { MetricsCollector } from "../middleware/metrics.js";
 export function createSettleRoute(nonceStore: NonceStore, hiveClient?: Client, metrics?: MetricsCollector) {
   return async (req: Request, res: Response) => {
     try {
-      const { paymentPayload, paymentRequirements } = req.body as SettleRequest;
+      const { paymentPayload, paymentRequirements, validBefore } = req.body as SettleRequest;
 
       if (!paymentPayload?.payload?.signedTransaction || !paymentRequirements) {
         res.status(400).json({ success: false, errorReason: "Missing required fields" });
@@ -35,7 +35,7 @@ export function createSettleRoute(nonceStore: NonceStore, hiveClient?: Client, m
       }
 
       // Re-verify before broadcasting
-      const verification = await verifySignature(signedTransaction, paymentRequirements, { client: hiveClient });
+      const verification = await verifySignature(signedTransaction, paymentRequirements, { client: hiveClient, validBefore });
       if (!verification.isValid) {
         res.json({
           success: false,
@@ -53,11 +53,12 @@ export function createSettleRoute(nonceStore: NonceStore, hiveClient?: Client, m
       // Record settlement metrics
       if (metrics && verification.payer) {
         const transfer = signedTransaction.operations[0][1] as { amount: string };
+        const resourceUrl = "resource" in paymentRequirements ? (paymentRequirements as any).resource ?? "" : "";
         metrics.recordSettlement(
           verification.payer,
           transfer.amount,
           confirmation.id,
-          paymentRequirements.resource ?? "",
+          resourceUrl,
         );
       }
 

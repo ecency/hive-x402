@@ -3,11 +3,15 @@ import {
   HEADER_PAYMENT,
   HEADER_PAYMENT_RESPONSE,
   X402_VERSION,
+  X402_VERSION_V2,
   HIVE_NETWORK,
   decodePayment,
   encodePaymentRequired,
-  type PaymentRequirements,
-  type PaymentRequired,
+  isV1Payload,
+  type PaymentRequirementsV1,
+  type PaymentRequirementsV2,
+  type PaymentRequiredV1,
+  type PaymentRequiredV2,
   type VerifyResponse,
   type SettleResponse,
   type PriceFunction,
@@ -27,6 +31,8 @@ export interface PaywallOptions {
   mimeType?: string;
   /** Static extra fields or a function that computes them per-request */
   extra?: Record<string, unknown> | ExtraFunction<Request>;
+  /** Protocol version for 402 responses (default: 2) */
+  x402Version?: 1 | 2;
 }
 
 /**
@@ -38,6 +44,7 @@ export interface PaywallOptions {
 export function paywall(options: PaywallOptions) {
   const { amount, receivingAccount, facilitatorUrl, description, mimeType, extra } =
     options;
+  const version = options.x402Version ?? 2;
 
   return async (req: Request, res: Response, next: NextFunction) => {
     const paymentHeader = req.headers[HEADER_PAYMENT] as string | undefined;
@@ -47,24 +54,38 @@ export function paywall(options: PaywallOptions) {
       const pricingCtx = { resource: req.originalUrl, raw: req };
       const resolvedAmount = typeof amount === "function" ? await amount(pricingCtx) : amount;
       const resolvedExtra = typeof extra === "function" ? await extra(pricingCtx) : extra;
+      const validBefore = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
-      const requirements: PaymentRequirements = {
-        x402Version: X402_VERSION,
-        scheme: "exact",
-        network: HIVE_NETWORK,
-        maxAmountRequired: resolvedAmount,
-        resource: req.originalUrl,
-        payTo: receivingAccount,
-        validBefore: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-        description,
-        mimeType,
-        extra: resolvedExtra,
-      };
+      let paymentRequired: PaymentRequiredV1 | PaymentRequiredV2;
 
-      const paymentRequired: PaymentRequired = {
-        x402Version: X402_VERSION,
-        accepts: [requirements],
-      };
+      if (version === 1) {
+        const requirements: PaymentRequirementsV1 = {
+          x402Version: X402_VERSION as 1,
+          scheme: "exact",
+          network: HIVE_NETWORK,
+          maxAmountRequired: resolvedAmount,
+          resource: req.originalUrl,
+          payTo: receivingAccount,
+          validBefore,
+          description,
+          mimeType,
+          extra: resolvedExtra,
+        };
+        paymentRequired = { x402Version: X402_VERSION as 1, accepts: [requirements] };
+      } else {
+        const requirements: PaymentRequirementsV2 = {
+          scheme: "exact",
+          network: HIVE_NETWORK,
+          amount: resolvedAmount,
+          payTo: receivingAccount,
+          extra: resolvedExtra,
+        };
+        paymentRequired = {
+          x402Version: X402_VERSION_V2 as 2,
+          resource: { url: req.originalUrl, description, mimeType },
+          accepts: [requirements],
+        };
+      }
 
       res
         .status(402)
@@ -86,22 +107,34 @@ export function paywall(options: PaywallOptions) {
       // Use the amount from the signed transaction — don't recompute dynamic price.
       // The facilitator independently verifies the transfer details (amount, recipient, signature).
       const paidAmount = (paymentPayload.payload.signedTransaction.operations[0]?.[1] as any)?.amount;
+      const validBefore = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
-      const paymentRequirements: PaymentRequirements = {
-        x402Version: X402_VERSION,
-        scheme: "exact",
-        network: HIVE_NETWORK,
-        maxAmountRequired: paidAmount ?? (typeof amount === "string" ? amount : "0.001 HBD"),
-        resource: req.originalUrl,
-        payTo: receivingAccount,
-        validBefore: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-      };
+      // Build requirements matching the payload version for the facilitator
+      let paymentRequirements;
+      if (isV1Payload(paymentPayload)) {
+        paymentRequirements = {
+          x402Version: X402_VERSION as 1,
+          scheme: "exact" as const,
+          network: HIVE_NETWORK,
+          maxAmountRequired: paidAmount ?? (typeof amount === "string" ? amount : "0.001 HBD"),
+          resource: req.originalUrl,
+          payTo: receivingAccount,
+          validBefore,
+        };
+      } else {
+        paymentRequirements = {
+          scheme: "exact" as const,
+          network: HIVE_NETWORK,
+          amount: paidAmount ?? (typeof amount === "string" ? amount : "0.001 HBD"),
+          payTo: receivingAccount,
+        };
+      }
 
       // Step 1: Verify
       const verifyRes = await fetch(`${facilitatorUrl}/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentPayload, paymentRequirements }),
+        body: JSON.stringify({ paymentPayload, paymentRequirements, validBefore }),
       });
       const verifyResult: VerifyResponse = await verifyRes.json();
 
@@ -114,7 +147,7 @@ export function paywall(options: PaywallOptions) {
       const settleRes = await fetch(`${facilitatorUrl}/settle`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentPayload, paymentRequirements }),
+        body: JSON.stringify({ paymentPayload, paymentRequirements, validBefore }),
       });
       const settleResult: SettleResponse = await settleRes.json();
 

@@ -7,7 +7,7 @@ import type { NonceStore, VerifyRequest, VerifyResponse } from "../../types.js";
 export function createVerifyRoute(nonceStore: NonceStore, hiveClient?: Client) {
   return async (req: Request, res: Response) => {
     try {
-      const { paymentPayload, paymentRequirements } = req.body as VerifyRequest;
+      const { paymentPayload, paymentRequirements, validBefore } = req.body as VerifyRequest;
 
       if (!paymentPayload?.payload?.signedTransaction || !paymentRequirements) {
         res.status(400).json({ isValid: false, invalidReason: "Missing required fields" });
@@ -33,7 +33,7 @@ export function createVerifyRoute(nonceStore: NonceStore, hiveClient?: Client) {
       }
 
       // Verify the signature and transaction details
-      const result = await verifySignature(signedTransaction, paymentRequirements, { client: hiveClient });
+      const result = await verifySignature(signedTransaction, paymentRequirements, { client: hiveClient, validBefore });
       res.json(result satisfies VerifyResponse);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";

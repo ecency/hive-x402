@@ -10,13 +10,15 @@ import { paywall } from "../middleware/express.js";
 import {
   HIVE_CHAIN_ID,
   X402_VERSION,
+  X402_VERSION_V2,
   HIVE_NETWORK,
   HEADER_PAYMENT,
   HEADER_PAYMENT_RESPONSE,
   encodePayment,
   decodePaymentRequired,
-  type PaymentPayload,
-  type PaymentRequirements,
+  getRequiredAmount,
+  type PaymentPayloadV1,
+  type PaymentRequirementsV1,
   type NonceStore,
   type SettleResponse,
 } from "../types.js";
@@ -79,7 +81,7 @@ function buildSignedPayment(opts: {
   to?: string;
   amount?: string;
   expiresInMs?: number;
-}): { paymentHeader: string; nonce: string; payload: PaymentPayload } {
+}): { paymentHeader: string; nonce: string; payload: PaymentPayloadV1 } {
   const nonce = randomBytes(16).toString("hex");
   const expiration = new Date(Date.now() + (opts.expiresInMs ?? 60_000))
     .toISOString()
@@ -105,8 +107,8 @@ function buildSignedPayment(opts: {
 
   const signedTx = cryptoUtils.signTransaction(tx, TEST_PRIVKEY, Buffer.from(HIVE_CHAIN_ID));
 
-  const payload: PaymentPayload = {
-    x402Version: X402_VERSION,
+  const payload: PaymentPayloadV1 = {
+    x402Version: X402_VERSION as 1,
     scheme: "exact",
     network: HIVE_NETWORK,
     payload: { signedTransaction: signedTx, nonce },
@@ -119,9 +121,9 @@ function buildSignedPayment(opts: {
   };
 }
 
-function makeRequirements(overrides: Partial<PaymentRequirements> = {}): PaymentRequirements {
+function makeRequirements(overrides: Partial<PaymentRequirementsV1> = {}): PaymentRequirementsV1 {
   return {
-    x402Version: X402_VERSION,
+    x402Version: X402_VERSION as 1,
     scheme: "exact",
     network: HIVE_NETWORK,
     maxAmountRequired: TEST_AMOUNT,
@@ -305,10 +307,10 @@ describe("E2E: full 402 payment flow", () => {
     assert.ok(paymentHeader, "Should have x-payment header");
 
     const decoded = decodePaymentRequired(paymentHeader);
-    assert.equal(decoded.x402Version, X402_VERSION);
+    assert.equal(decoded.x402Version, X402_VERSION_V2);
     assert.equal(decoded.accepts.length, 1);
     assert.equal(decoded.accepts[0].network, HIVE_NETWORK);
-    assert.equal(decoded.accepts[0].maxAmountRequired, TEST_AMOUNT);
+    assert.equal(getRequiredAmount(decoded.accepts[0]), TEST_AMOUNT);
     assert.equal(decoded.accepts[0].payTo, TEST_RECEIVER);
   });
 

@@ -5,6 +5,8 @@ import {
   HIVE_CHAIN_ID,
   HBD_ASSET,
   parseHBD,
+  getRequiredAmount,
+  getValidBefore,
   type PaymentRequirements,
   type VerifyResponse,
 } from "../../types.js";
@@ -12,6 +14,8 @@ import {
 export interface VerifySignatureOptions {
   /** Optional dhive Client for dependency injection (testing). Falls back to node pool. */
   client?: Client;
+  /** For v2, validBefore must be passed separately since it's not in PaymentRequirementsV2 */
+  validBefore?: string;
 }
 
 /**
@@ -48,12 +52,13 @@ export async function verifySignature(
   }
 
   // 4. Check amount
+  const requiredAmount = getRequiredAmount(requirements);
   const paid = parseHBD(transfer.amount);
-  const required = parseHBD(requirements.maxAmountRequired);
+  const required = parseHBD(requiredAmount);
   if (paid < required) {
     return {
       isValid: false,
-      invalidReason: `Insufficient payment: required ${requirements.maxAmountRequired}, got ${transfer.amount}`,
+      invalidReason: `Insufficient payment: required ${requiredAmount}, got ${transfer.amount}`,
     };
   }
 
@@ -64,9 +69,12 @@ export async function verifySignature(
   }
 
   // 6. Check validBefore from requirements
-  const validBefore = new Date(requirements.validBefore);
-  if (new Date() >= validBefore) {
-    return { isValid: false, invalidReason: "Payment requirements have expired (validBefore)" };
+  const validBeforeStr = getValidBefore(requirements) ?? options.validBefore;
+  if (validBeforeStr) {
+    const validBefore = new Date(validBeforeStr);
+    if (new Date() >= validBefore) {
+      return { isValid: false, invalidReason: "Payment requirements have expired (validBefore)" };
+    }
   }
 
   // 7. Verify signature against sender's active key on-chain

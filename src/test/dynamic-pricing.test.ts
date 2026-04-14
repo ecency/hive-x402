@@ -13,7 +13,8 @@ import {
   HIVE_NETWORK,
   encodePayment,
   decodePaymentRequired,
-  type PaymentPayload,
+  getRequiredAmount,
+  type PaymentPayloadV1,
   type NonceStore,
   type PricingContext,
 } from "../types.js";
@@ -69,7 +70,7 @@ function buildSignedPayment(opts: { from?: string; to?: string; amount?: string 
     extensions: [],
   };
   const signedTx = cryptoUtils.signTransaction(tx, TEST_PRIVKEY, Buffer.from(HIVE_CHAIN_ID));
-  const payload: PaymentPayload = { x402Version: X402_VERSION, scheme: "exact", network: HIVE_NETWORK, payload: { signedTransaction: signedTx, nonce } };
+  const payload: PaymentPayloadV1 = { x402Version: X402_VERSION as 1, scheme: "exact", network: HIVE_NETWORK, payload: { signedTransaction: signedTx, nonce } };
   return { paymentHeader: encodePayment(payload), nonce, payload };
 }
 
@@ -178,14 +179,14 @@ describe("Dynamic pricing middleware", () => {
     const res = await fetch(`http://localhost:${apiPort}/api/dynamic?tier=basic`);
     assert.equal(res.status, 402);
     const decoded = decodePaymentRequired(res.headers.get("x-payment")!);
-    assert.equal(decoded.accepts[0].maxAmountRequired, "0.050 HBD");
+    assert.equal(getRequiredAmount(decoded.accepts[0]), "0.050 HBD");
   });
 
   it("402 response uses price from callback (premium tier)", async () => {
     const res = await fetch(`http://localhost:${apiPort}/api/dynamic?tier=premium`);
     assert.equal(res.status, 402);
     const decoded = decodePaymentRequired(res.headers.get("x-payment")!);
-    assert.equal(decoded.accepts[0].maxAmountRequired, "1.000 HBD");
+    assert.equal(getRequiredAmount(decoded.accepts[0]), "1.000 HBD");
   });
 
   it("price callback is NOT called on paid request path", async () => {
@@ -222,7 +223,7 @@ describe("Dynamic pricing middleware", () => {
     const res402 = await fetch(`http://localhost:${apiPort}/api/mutable`);
     assert.equal(res402.status, 402);
     const decoded = decodePaymentRequired(res402.headers.get("x-payment")!);
-    assert.equal(decoded.accepts[0].maxAmountRequired, "0.050 HBD");
+    assert.equal(getRequiredAmount(decoded.accepts[0]), "0.050 HBD");
 
     // Price changes to 1.000 HBD (simulating time-based change)
     // We can't easily call __setMutablePrice from here, but the key test
