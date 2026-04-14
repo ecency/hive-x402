@@ -6,6 +6,7 @@ export const X402_VERSION = 1;
 export const X402_VERSION_V2 = 2;
 export const HIVE_NETWORK = "hive:mainnet";
 export const HBD_ASSET = "HBD";
+export const HBD_ASSET_ID = "HBD";
 
 export function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2);
@@ -96,14 +97,16 @@ export interface ResourceInfo {
 export interface PaymentRequirementsV2 {
   scheme: "exact";
   network: typeof HIVE_NETWORK;
+  asset: string;
   amount: string;
   payTo: string;
-  maxTimeoutSeconds?: number;
-  extra?: Record<string, unknown>;
+  maxTimeoutSeconds: number;
+  extra: Record<string, unknown>;
 }
 
 export interface PaymentRequiredV2 {
   x402Version: 2;
+  error?: string;
   resource: ResourceInfo;
   accepts: PaymentRequirementsV2[];
   extensions?: Record<string, unknown>;

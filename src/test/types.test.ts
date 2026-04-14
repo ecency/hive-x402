@@ -106,8 +106,11 @@ describe("encode/decode PaymentPayload v2", () => {
     accepted: {
       scheme: "exact",
       network: HIVE_NETWORK,
+      asset: "HBD",
       amount: "0.050 HBD",
       payTo: "bob",
+      maxTimeoutSeconds: 300,
+      extra: {},
     },
     resource: { url: "/api/test", description: "Test resource" },
     payload: {
@@ -167,8 +170,11 @@ describe("encode/decode PaymentRequired v2", () => {
       {
         scheme: "exact",
         network: HIVE_NETWORK,
+        asset: "HBD",
         amount: "0.050 HBD",
         payTo: "bob",
+        maxTimeoutSeconds: 300,
+        extra: {},
       },
     ],
   };
@@ -204,8 +210,11 @@ describe("getRequiredAmount", () => {
     const v2: PaymentRequirementsV2 = {
       scheme: "exact",
       network: HIVE_NETWORK,
+      asset: "HBD",
       amount: "1.000 HBD",
       payTo: "bob",
+      maxTimeoutSeconds: 300,
+      extra: {},
     };
     assert.equal(getRequiredAmount(v2), "1.000 HBD");
   });
@@ -229,8 +238,11 @@ describe("isV1Requirements", () => {
     const v2: PaymentRequirementsV2 = {
       scheme: "exact",
       network: HIVE_NETWORK,
+      asset: "HBD",
       amount: "0.050 HBD",
       payTo: "bob",
+      maxTimeoutSeconds: 300,
+      extra: {},
     };
     assert.equal(isV1Requirements(v2), false);
   });

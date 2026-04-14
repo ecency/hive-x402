@@ -75,8 +75,11 @@ function reqsV2(overrides: Partial<PaymentRequirementsV2> = {}): PaymentRequirem
   return {
     scheme: "exact",
     network: HIVE_NETWORK,
+    asset: "HBD",
     amount: "0.050 HBD",
     payTo: "bob",
+    maxTimeoutSeconds: 300,
+    extra: {},
     ...overrides,
   };
 }

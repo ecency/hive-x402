@@ -5,6 +5,7 @@ import {
   X402_VERSION,
   X402_VERSION_V2,
   HIVE_NETWORK,
+  HBD_ASSET_ID,
   decodePayment,
   encodePaymentRequired,
   isV1Payload,
@@ -83,9 +84,11 @@ export function paywall(options: PaywallOptions) {
         const requirements: PaymentRequirementsV2 = {
           scheme: "exact",
           network: HIVE_NETWORK,
+          asset: HBD_ASSET_ID,
           amount: resolvedAmount,
           payTo: receivingAccount,
-          extra: resolvedExtra,
+          maxTimeoutSeconds: 300,
+          extra: resolvedExtra ?? {},
         };
         paymentRequired = {
           x402Version: X402_VERSION_V2 as 2,
@@ -132,8 +135,11 @@ export function paywall(options: PaywallOptions) {
         paymentRequirements = {
           scheme: "exact" as const,
           network: HIVE_NETWORK,
+          asset: HBD_ASSET_ID,
           amount: serverAmount,
           payTo: receivingAccount,
+          maxTimeoutSeconds: 300,
+          extra: {},
         };
       }
 
