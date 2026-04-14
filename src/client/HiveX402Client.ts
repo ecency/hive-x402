@@ -1,4 +1,4 @@
-import { HEADER_PAYMENT } from "../types.js";
+import { HEADER_PAYMENT, getRequiredAmount, parseHBD } from "../types.js";
 import { parseRequirements } from "./parse-requirements.js";
 import { signPayment } from "./sign-payment.js";
 
@@ -39,16 +39,17 @@ export class HiveX402Client {
     }
 
     // Parse Hive payment requirements from 402 response
-    const requirements = parseRequirements(response);
+    const { requirements, x402Version, resource } = parseRequirements(response);
     if (!requirements) {
       throw new Error("Received 402 but no Hive payment requirements found");
     }
 
     // Check against max payment threshold
-    const amount = parseFloat(requirements.maxAmountRequired);
+    const amountStr = getRequiredAmount(requirements);
+    const amount = parseHBD(amountStr);
     if (amount > this.maxPayment) {
       throw new Error(
-        `Payment of ${requirements.maxAmountRequired} exceeds max allowed ${this.maxPayment.toFixed(3)} HBD`
+        `Payment of ${amountStr} exceeds max allowed ${this.maxPayment.toFixed(3)} HBD`
       );
     }
 
@@ -57,6 +58,8 @@ export class HiveX402Client {
       account: this.account,
       activeKey: this.activeKey,
       requirements,
+      x402Version,
+      resource,
     });
 
     // Retry with payment header

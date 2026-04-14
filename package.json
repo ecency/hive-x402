@@ -1,6 +1,6 @@
 {
   "name": "@hiveio/x402",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Hive/HBD-native implementation of the x402 payment standard — zero-fee micropayments for AI agents and APIs",
   "type": "module",
   "exports": {

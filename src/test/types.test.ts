@@ -7,11 +7,18 @@ import {
   decodePayment,
   encodePaymentRequired,
   decodePaymentRequired,
+  getRequiredAmount,
+  isV1Requirements,
   X402_VERSION,
+  X402_VERSION_V2,
   HIVE_NETWORK,
   HIVE_CHAIN_ID,
-  type PaymentPayload,
-  type PaymentRequired,
+  type PaymentPayloadV1,
+  type PaymentPayloadV2,
+  type PaymentRequiredV1,
+  type PaymentRequiredV2,
+  type PaymentRequirementsV1,
+  type PaymentRequirementsV2,
 } from "../types.js";
 
 describe("formatHBD", () => {
@@ -62,9 +69,9 @@ describe("parseHBD", () => {
   });
 });
 
-describe("encode/decode PaymentPayload", () => {
-  const payload: PaymentPayload = {
-    x402Version: X402_VERSION,
+describe("encode/decode PaymentPayload v1", () => {
+  const payload: PaymentPayloadV1 = {
+    x402Version: 1,
     scheme: "exact",
     network: HIVE_NETWORK,
     payload: {
@@ -93,12 +100,51 @@ describe("encode/decode PaymentPayload", () => {
   });
 });
 
-describe("encode/decode PaymentRequired", () => {
-  const pr: PaymentRequired = {
-    x402Version: X402_VERSION,
+describe("encode/decode PaymentPayload v2", () => {
+  const payload: PaymentPayloadV2 = {
+    x402Version: 2,
+    accepted: {
+      scheme: "exact",
+      network: HIVE_NETWORK,
+      asset: "HBD",
+      amount: "0.050 HBD",
+      payTo: "bob",
+      maxTimeoutSeconds: 300,
+      extra: {},
+    },
+    resource: { url: "/api/test", description: "Test resource" },
+    payload: {
+      signedTransaction: {
+        ref_block_num: 1,
+        ref_block_prefix: 2,
+        expiration: "2030-01-01T00:00:00",
+        operations: [],
+        extensions: [],
+        signatures: ["abc123"],
+      },
+      nonce: "deadbeef",
+    },
+  };
+
+  it("round-trips through encode/decode", () => {
+    const encoded = encodePayment(payload);
+    const decoded = decodePayment(encoded);
+    assert.deepEqual(decoded, payload);
+  });
+
+  it("decoded payload has x402Version 2", () => {
+    const encoded = encodePayment(payload);
+    const decoded = decodePayment(encoded);
+    assert.equal(decoded.x402Version, 2);
+  });
+});
+
+describe("encode/decode PaymentRequired v1", () => {
+  const pr: PaymentRequiredV1 = {
+    x402Version: 1,
     accepts: [
       {
-        x402Version: X402_VERSION,
+        x402Version: 1,
         scheme: "exact",
         network: HIVE_NETWORK,
         maxAmountRequired: "0.050 HBD",
@@ -113,6 +159,92 @@ describe("encode/decode PaymentRequired", () => {
     const encoded = encodePaymentRequired(pr);
     const decoded = decodePaymentRequired(encoded);
     assert.deepEqual(decoded, pr);
+  });
+});
+
+describe("encode/decode PaymentRequired v2", () => {
+  const pr: PaymentRequiredV2 = {
+    x402Version: 2,
+    resource: { url: "/api/test", description: "Test" },
+    accepts: [
+      {
+        scheme: "exact",
+        network: HIVE_NETWORK,
+        asset: "HBD",
+        amount: "0.050 HBD",
+        payTo: "bob",
+        maxTimeoutSeconds: 300,
+        extra: {},
+      },
+    ],
+  };
+
+  it("round-trips through encode/decode", () => {
+    const encoded = encodePaymentRequired(pr);
+    const decoded = decodePaymentRequired(encoded);
+    assert.deepEqual(decoded, pr);
+  });
+
+  it("decoded has x402Version 2", () => {
+    const encoded = encodePaymentRequired(pr);
+    const decoded = decodePaymentRequired(encoded);
+    assert.equal(decoded.x402Version, 2);
+  });
+});
+
+describe("getRequiredAmount", () => {
+  it("returns maxAmountRequired for v1", () => {
+    const v1: PaymentRequirementsV1 = {
+      x402Version: 1,
+      scheme: "exact",
+      network: HIVE_NETWORK,
+      maxAmountRequired: "0.050 HBD",
+      resource: "/test",
+      payTo: "bob",
+      validBefore: "2030-01-01T00:00:00.000Z",
+    };
+    assert.equal(getRequiredAmount(v1), "0.050 HBD");
+  });
+
+  it("returns amount for v2", () => {
+    const v2: PaymentRequirementsV2 = {
+      scheme: "exact",
+      network: HIVE_NETWORK,
+      asset: "HBD",
+      amount: "1.000 HBD",
+      payTo: "bob",
+      maxTimeoutSeconds: 300,
+      extra: {},
+    };
+    assert.equal(getRequiredAmount(v2), "1.000 HBD");
+  });
+});
+
+describe("isV1Requirements", () => {
+  it("returns true for v1", () => {
+    const v1: PaymentRequirementsV1 = {
+      x402Version: 1,
+      scheme: "exact",
+      network: HIVE_NETWORK,
+      maxAmountRequired: "0.050 HBD",
+      resource: "/test",
+      payTo: "bob",
+      validBefore: "2030-01-01T00:00:00.000Z",
+    };
+    assert.equal(isV1Requirements(v1), true);
+  });
+
+  it("returns false for v2", () => {
+    const v2: PaymentRequirementsV2 = {
+      scheme: "exact",
+      network: HIVE_NETWORK,
+      asset: "HBD",
+      amount: "0.050 HBD",
+      payTo: "bob",
+      maxTimeoutSeconds: 300,
+      extra: {},
+    };
+    assert.equal(isV1Requirements(v2), false);
   });
 });
 
@@ -134,5 +266,9 @@ describe("constants", () => {
 
   it("X402_VERSION is 1", () => {
     assert.equal(X402_VERSION, 1);
+  });
+
+  it("X402_VERSION_V2 is 2", () => {
+    assert.equal(X402_VERSION_V2, 2);
   });
 });

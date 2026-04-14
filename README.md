@@ -96,7 +96,67 @@ app.get("/api/premium", honoPaywall({
 export default app;
 ```
 
-### 5. Pay for content (AI agent / client)
+### 5. Dynamic pricing
+
+All middleware supports a **price callback** instead of a static amount, plus an optional **`extra`** field to pass metadata to clients.
+
+```ts
+import express from "express";
+import { paywall } from "@hiveio/x402/middleware";
+import type { PricingContext } from "@hiveio/x402/types";
+import type { Request } from "express";
+
+app.get("/api/ai", paywall({
+  // Price based on query param — return HBD string
+  amount: ({ raw: req }: PricingContext<Request>) => {
+    const model = req.query.model ?? "basic";
+    return model === "premium" ? "0.500 HBD" : "0.050 HBD";
+  },
+  // Extra fields included in the 402 response for client visibility
+  extra: {
+    tiers: { basic: "0.050 HBD", premium: "0.500 HBD" },
+  },
+  receivingAccount: "your-hive-account",
+  facilitatorUrl: "http://localhost:4020",
+}), handler);
+```
+
+The `amount` field accepts `string | PriceFunction<T>` where `T` is the framework's request type (`Request` for Express/Next.js, `Context` for Hono). Async functions are supported — useful for fetching external pricing data.
+
+The `extra` field accepts `Record<string, unknown> | ExtraFunction<T>` — static metadata or a per-request function. It's included in the `PaymentRequirements` returned to the client in the 402 response.
+
+**Next.js:**
+```ts
+import { withPaywall } from "@hiveio/x402/middleware/nextjs";
+
+export const GET = withPaywall({
+  amount: ({ raw: req }) => {
+    const url = new URL(req.url);
+    return url.searchParams.get("tier") === "pro" ? "1.000 HBD" : "0.100 HBD";
+  },
+  receivingAccount: "your-hive-account",
+  facilitatorUrl: "http://localhost:4020",
+}, handler);
+```
+
+**Hono:**
+```ts
+import { honoPaywall } from "@hiveio/x402/middleware/hono";
+import type { PricingContext } from "@hiveio/x402/types";
+import type { Context } from "hono";
+
+app.get("/api/premium", honoPaywall({
+  amount: ({ raw: c }: PricingContext<Context>) => {
+    return c.req.query("tier") === "pro" ? "1.000 HBD" : "0.100 HBD";
+  },
+  receivingAccount: "your-hive-account",
+  facilitatorUrl: "http://localhost:4020",
+}), handler);
+```
+
+See [`examples/dynamic-pricing-server.ts`](./examples/dynamic-pricing-server.ts) for a complete runnable example.
+
+### 6. Pay for content (AI agent / client)
 
 ```ts
 import { HiveX402Client } from "@hiveio/x402/client";
@@ -143,6 +203,8 @@ const app = createFacilitator({
 |--------|------|-------------|
 | GET | `/health` | Health check |
 | GET | `/supported-networks` | Returns `["hive:mainnet"]` |
+| GET | `/metrics` | JSON metrics (requests, settlements, HBD volume, latencies) |
+| GET | `/stats` | Live HTML dashboard with auto-refresh |
 | POST | `/verify` | Verify a signed payment |
 | POST | `/settle` | Verify + broadcast + mark nonce spent |
 
@@ -186,14 +248,16 @@ const response = await client.fetch("https://api.example.com/premium");
 ```ts
 import { signPayment, parseRequirements } from "@hiveio/x402/client";
 
-// Parse requirements from a 402 response
-const requirements = parseRequirements(response);
+// Parse requirements from a 402 response (auto-detects v1/v2)
+const { requirements, x402Version, resource } = parseRequirements(response);
 
 // Sign a payment (returns base64-encoded x-payment header value)
 const header = await signPayment({
   account: "alice",
   activeKey: "5K...",
-  requirements,
+  requirements,     // works with both v1 and v2 requirements
+  x402Version,      // auto-detected, or override with 1 | 2
+  resource,         // v2: resource info from PaymentRequired envelope
 });
 ```
 
@@ -219,25 +283,43 @@ const header = encodePaymentPayload({ signedTransaction: signedTx, nonce });
 
 ## Types
 
+The library supports both x402 v1 and v2 wire formats. Middleware defaults to v2.
+
 ```ts
 import type {
+  // Union types (v1 | v2)
   PaymentRequirements,
   PaymentRequired,
   PaymentPayload,
+  // Versioned types (use when you need a specific version)
+  PaymentRequirementsV1,  // has maxAmountRequired, resource, validBefore
+  PaymentRequirementsV2,  // has amount (resource/validBefore moved to envelope)
+  PaymentRequiredV1,
+  PaymentRequiredV2,
+  PaymentPayloadV1,
+  PaymentPayloadV2,
+  ResourceInfo,
+  // Other types
   VerifyRequest,
   VerifyResponse,
   SettleRequest,
   SettleResponse,
   NonceStore,
+  PricingContext,
+  PriceFunction,
+  ExtraFunction,
 } from "@hiveio/x402/types";
 
 import {
   encodePayment,
   decodePayment,
-  formatHBD,     // formatHBD(0.05) → "0.050 HBD"
-  parseHBD,      // parseHBD("0.050 HBD") → 0.05
-  X402_VERSION,  // 1
-  HIVE_NETWORK,  // "hive:mainnet"
+  getRequiredAmount,  // extract amount from v1 or v2 requirements
+  isV1Requirements,   // type guard: v1 has maxAmountRequired
+  formatHBD,          // formatHBD(0.05) → "0.050 HBD"
+  parseHBD,           // parseHBD("0.050 HBD") → 0.05
+  X402_VERSION,       // 1
+  X402_VERSION_V2,    // 2
+  HIVE_NETWORK,       // "hive:mainnet"
 } from "@hiveio/x402/types";
 ```
 
