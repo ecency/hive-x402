@@ -34,11 +34,13 @@ export interface FacilitatorOptions {
  */
 export function createFacilitator(options: FacilitatorOptions = {}): Express {
   const nonceStore = options.nonceStore ?? new SqliteNonceStore(options.dbPath);
-  const metrics = new MetricsCollector();
+  const metrics = options.enableMetrics ? new MetricsCollector() : undefined;
 
   const app = express();
   app.use(express.json({ limit: "64kb" }));
-  app.use(metricsMiddleware(metrics));
+  if (metrics) {
+    app.use(metricsMiddleware(metrics));
+  }
 
   if (options.rateLimit !== false) {
     app.use(rateLimit(options.rateLimit ?? {}));
@@ -56,7 +58,7 @@ export function createFacilitator(options: FacilitatorOptions = {}): Express {
     res.json({ networks: [HIVE_NETWORK] });
   });
 
-  if (options.enableMetrics) {
+  if (metrics) {
     const token = options.metricsToken ?? process.env.METRICS_TOKEN;
     const metricsAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
       if (token) {

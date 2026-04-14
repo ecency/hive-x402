@@ -33,10 +33,7 @@ class MemoryNonceStore implements NonceStore {
   markSpent(nonce: string) { this.spent.add(nonce); }
 }
 
-let broadcastCalls: SignedTransaction[] = [];
-
 function createMockHiveClient(): Client {
-  broadcastCalls = [];
   return {
     database: {
       getAccounts(names: string[]) {
@@ -49,8 +46,7 @@ function createMockHiveClient(): Client {
       },
     },
     broadcast: {
-      send(tx: SignedTransaction): Promise<TransactionConfirmation> {
-        broadcastCalls.push(tx);
+      send(_tx: SignedTransaction): Promise<TransactionConfirmation> {
         return Promise.resolve({ id: "mock_tx_" + randomBytes(8).toString("hex"), block_num: 99999, trx_num: 0, expired: false });
       },
     },
@@ -82,6 +78,7 @@ describe("Dynamic pricing middleware", () => {
   let facilitatorPort: number;
   let apiPort: number;
   let priceCallCount: number;
+  let setMutablePrice: (p: string) => void;
 
   before(async () => {
     priceCallCount = 0;
@@ -161,7 +158,7 @@ describe("Dynamic pricing middleware", () => {
     );
 
     // Expose setter for tests
-    (apiApp as any).__setMutablePrice = (p: string) => { mutablePrice = p; };
+    setMutablePrice = (p: string) => { mutablePrice = p; };
 
     apiServer = await new Promise<Server>((resolve) => {
       const s = apiApp.listen(0, () => resolve(s));
@@ -169,9 +166,11 @@ describe("Dynamic pricing middleware", () => {
     apiPort = (apiServer.address() as any).port;
   });
 
-  after(() => {
-    facilitatorServer?.close();
-    apiServer?.close();
+  after(async () => {
+    await Promise.all([
+      facilitatorServer && new Promise(resolve => facilitatorServer.close(resolve)),
+      apiServer && new Promise(resolve => apiServer.close(resolve)),
+    ]);
   });
 
   // ── Price callback tests ──────────────────────────────────────────────
@@ -218,17 +217,27 @@ describe("Dynamic pricing middleware", () => {
     assert.ok(data.reason || data.error, "Should have an error reason");
   });
 
-  it("mutable price: payment quoted at old price succeeds after price changes", async () => {
+  it("mutable price: payment at old price is rejected after price increases", async () => {
     // Get 402 at 0.050 HBD
     const res402 = await fetch(`http://localhost:${apiPort}/api/mutable`);
     assert.equal(res402.status, 402);
     const decoded = decodePaymentRequired(res402.headers.get("x-payment")!);
     assert.equal(getRequiredAmount(decoded.accepts[0]), "0.050 HBD");
 
-    // Price changes to 1.000 HBD (simulating time-based change)
-    // We can't easily call __setMutablePrice from here, but the key test
-    // is that the paid path doesn't recompute — covered by the test above.
-    // This test verifies the 402 quote is correct.
+    // Sign payment at the old price
+    const { paymentHeader } = buildSignedPayment({ amount: "0.050 HBD" });
+
+    // Price changes to 1.000 HBD
+    setMutablePrice("1.000 HBD");
+
+    // Payment signed at old price should be rejected — server recomputes price
+    const res = await fetch(`http://localhost:${apiPort}/api/mutable`, {
+      headers: { "x-payment": paymentHeader },
+    });
+    assert.equal(res.status, 402, "Should reject — payment is below new server price");
+
+    // Reset for other tests
+    setMutablePrice("0.050 HBD");
   });
 
   // ── Extra field tests ─────────────────────────────────────────────────
@@ -271,7 +280,9 @@ describe("Metrics self-exclusion", () => {
     port = (server.address() as any).port;
   });
 
-  after(() => { server?.close(); });
+  after(async () => {
+    if (server) await new Promise(resolve => server.close(resolve));
+  });
 
   it("/metrics and /stats requests are not counted in metrics", async () => {
     // Hit /metrics and /stats multiple times
