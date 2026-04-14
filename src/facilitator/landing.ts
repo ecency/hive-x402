@@ -401,6 +401,16 @@ export const LANDING_HTML = `<!DOCTYPE html>
       <span class="ep-path">/settle</span>
       <span class="ep-desc">Verify + broadcast + mark nonce spent</span>
     </div>
+    <div class="endpoint">
+      <span class="method get">GET</span>
+      <span class="ep-path">/metrics</span>
+      <span class="ep-desc">JSON metrics (opt-in, token-gated)</span>
+    </div>
+    <div class="endpoint">
+      <span class="method get">GET</span>
+      <span class="ep-path">/stats</span>
+      <span class="ep-desc">Live HTML dashboard (opt-in, token-gated)</span>
+    </div>
   </div>
 </section>
 
@@ -413,6 +423,7 @@ export const LANDING_HTML = `<!DOCTYPE html>
     <button class="tab active" onclick="switchTab(event, 'tab-middleware')">API Server (Express)</button>
     <button class="tab" onclick="switchTab(event, 'tab-nextjs')">API Server (Next.js)</button>
     <button class="tab" onclick="switchTab(event, 'tab-client')">AI Agent Client</button>
+    <button class="tab" onclick="switchTab(event, 'tab-facilitator')">Facilitator</button>
   </div>
 
   <div id="tab-middleware" class="tab-panel active">
@@ -425,6 +436,7 @@ app.<span class="fn">get</span>(<span class="str">"/api/premium"</span>, <span c
   amount: <span class="str">"0.050 HBD"</span>,
   receivingAccount: <span class="str">"your-hive-account"</span>,
   facilitatorUrl: <span class="str">"https://x402.ecency.com"</span>,
+  <span class="cm">// x402Version: 1,  // optional: default is 2</span>
 }), (req, res) <span class="op">=&gt;</span> {
   res.<span class="fn">json</span>({ data: <span class="str">"premium content"</span> });
 });</pre>
@@ -445,6 +457,7 @@ app.<span class="fn">get</span>(<span class="str">"/api/premium"</span>, <span c
   amount: <span class="str">"0.050 HBD"</span>,
   receivingAccount: <span class="str">"your-hive-account"</span>,
   facilitatorUrl: <span class="str">"https://x402.ecency.com"</span>,
+  <span class="cm">// x402Version: 1,  // optional: default is 2</span>
 }, handler);</pre>
   </div>
 
@@ -458,10 +471,23 @@ app.<span class="fn">get</span>(<span class="str">"/api/premium"</span>, <span c
 });
 
 <span class="cm">// Transparently handles 402 → sign → retry</span>
+<span class="cm">// Auto-detects v1/v2 from the 402 response</span>
 <span class="kw">const</span> res = <span class="kw">await</span> client.<span class="fn">fetch</span>(
   <span class="str">"https://api.example.com/premium"</span>
 );
 <span class="kw">const</span> data = <span class="kw">await</span> res.<span class="fn">json</span>();</pre>
+  </div>
+
+  <div id="tab-facilitator" class="tab-panel">
+    <pre><span class="kw">import</span> { createFacilitator } <span class="kw">from</span> <span class="str">"@hiveio/x402/facilitator"</span>;
+
+<span class="kw">const</span> app = <span class="fn">createFacilitator</span>({
+  <span class="cm">// Metrics: opt-in, token-gated</span>
+  enableMetrics: <span class="num">true</span>,
+  metricsToken: process.env.METRICS_TOKEN,
+});
+
+app.<span class="fn">listen</span>(<span class="num">4020</span>);</pre>
   </div>
 </section>
 
