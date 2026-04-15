@@ -31,6 +31,7 @@ async function main() {
       max: parseInt(process.env.RATE_LIMIT_MAX ?? "120", 10),
       windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS ?? "60000", 10),
     },
+    enableMetrics: process.env.ENABLE_METRICS !== "false",
   });
 
   app.listen(port, "0.0.0.0", () => {

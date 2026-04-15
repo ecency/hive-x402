@@ -19,10 +19,8 @@ export interface FacilitatorOptions {
   hiveClient?: Client;
   /** Rate limit options. Set to false to disable. */
   rateLimit?: RateLimitOptions | false;
-  /** Enable /metrics and /stats endpoints. Default: false (disabled). */
+  /** Enable /metrics and /stats endpoints. Default: true. */
   enableMetrics?: boolean;
-  /** Bearer token required to access /metrics and /stats. Also reads METRICS_TOKEN env var. */
-  metricsToken?: string;
 }
 
 /**
@@ -34,7 +32,7 @@ export interface FacilitatorOptions {
  */
 export function createFacilitator(options: FacilitatorOptions = {}): Express {
   const nonceStore = options.nonceStore ?? new SqliteNonceStore(options.dbPath);
-  const metrics = options.enableMetrics ? new MetricsCollector() : undefined;
+  const metrics = (options.enableMetrics ?? true) ? new MetricsCollector() : undefined;
 
   const app = express();
   app.use(express.json({ limit: "64kb" }));
@@ -59,23 +57,11 @@ export function createFacilitator(options: FacilitatorOptions = {}): Express {
   });
 
   if (metrics) {
-    const token = options.metricsToken ?? process.env.METRICS_TOKEN;
-    const metricsAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-      if (token) {
-        const auth = req.headers.authorization;
-        if (!auth || auth !== `Bearer ${token}`) {
-          res.status(403).json({ error: "Forbidden" });
-          return;
-        }
-      }
-      next();
-    };
-
-    app.get("/metrics", metricsAuth, (_req, res) => {
+    app.get("/metrics", (_req, res) => {
       res.json(metrics.snapshot());
     });
 
-    app.get("/stats", metricsAuth, (_req, res) => {
+    app.get("/stats", (_req, res) => {
       res.type("html").send(STATS_HTML);
     });
   }

@@ -404,12 +404,12 @@ export const LANDING_HTML = `<!DOCTYPE html>
     <div class="endpoint">
       <span class="method get">GET</span>
       <span class="ep-path">/metrics</span>
-      <span class="ep-desc">JSON metrics (opt-in, token-gated)</span>
+      <span class="ep-desc">JSON metrics</span>
     </div>
     <div class="endpoint">
       <span class="method get">GET</span>
       <span class="ep-path">/stats</span>
-      <span class="ep-desc">Live HTML dashboard (opt-in, token-gated)</span>
+      <span class="ep-desc">Live HTML dashboard</span>
     </div>
   </div>
 </section>
@@ -481,11 +481,8 @@ app.<span class="fn">get</span>(<span class="str">"/api/premium"</span>, <span c
   <div id="tab-facilitator" class="tab-panel">
     <pre><span class="kw">import</span> { createFacilitator } <span class="kw">from</span> <span class="str">"@hiveio/x402/facilitator"</span>;
 
-<span class="kw">const</span> app = <span class="fn">createFacilitator</span>({
-  <span class="cm">// Metrics: opt-in, token-gated</span>
-  enableMetrics: <span class="num">true</span>,
-  metricsToken: process.env.METRICS_TOKEN,
-});
+<span class="cm">// Metrics enabled by default at /metrics and /stats</span>
+<span class="kw">const</span> app = <span class="fn">createFacilitator</span>();
 
 app.<span class="fn">listen</span>(<span class="num">4020</span>);</pre>
   </div>
